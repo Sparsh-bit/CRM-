@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/lib/template.ts", "src/lib/crypto.ts", "src/lib/scheduler.ts",
+    "src/lib/import/mapping.ts", "src/lib/import/parse.ts",
+    "src/lib/ai/provider.ts", "src/lib/ai/writer.ts",
+    "src/lib/email/tracking.ts", "src/lib/email/senders.ts",
+    "src/lib/whatsapp/evolution.ts",
+    "scripts/template-test.ts", "scripts/mapping-test.ts", "scripts/import-test.ts"
+  ]
+}
