@@ -17,28 +17,46 @@ What they currently cannot do:
 
 ## Competitive baseline (verified September 2026)
 
-| Capability | lemlist | Instantly | Smartlead | Mailmeteor | **OutreachPilot v1** |
-|---|---|---|---|---|---|
-| Entry price | $55/mo | $47/mo | $39/mo (Base) | freemium | self-host / your own keys |
-| Unlimited mailboxes | yes | yes | yes | n/a | yes |
-| Inbox rotation | yes | yes | yes | aliases only | **yes** |
-| Warmup pool | yes | yes | yes (add-on) | no | **ramp built in**, pool on roadmap |
-| Multichannel (email + WhatsApp) | yes | email-first | email-first | email only | **yes, day one** |
-| AI writer | lemAgent | AI Email Writer Agent | — | — | **per-lead, full-row context** |
-| AI reply handling | yes | AI Reply Agent | — | — | roadmap |
-| Lead database | 650M | 450M | 2k–170k verified credits | — | bring your own |
-| Deliverability testing | yes | SISR | SmartDelivery $49+/mo | — | roadmap |
-| Whitelabel / agency | Enterprise | Agency $500/mo | $29/client/mo | — | **roadmap, priced low** |
-| Spreadsheet import quality | mapping wizard | mapping wizard | mapping wizard | Sheets-native | **auto, multi-sheet, zero wizard** |
+| Capability | lemlist | Instantly | Smartlead | Saleshandy | Woodpecker | Mailshake | **OutreachPilot v1** |
+|---|---|---|---|---|---|---|---|
+| Entry price | $55/mo | $47/mo | $39/mo | $34/mo | usage: $7/100 prospects | $45/mo | self-host / your own keys |
+| Unlimited mailboxes | yes | yes | yes | yes | yes | 2–5 by tier | yes |
+| Inbox rotation | yes | yes | yes | yes | yes | — | **yes** |
+| Warmup | yes | yes | add-on | included, IP rotation | 4 free, $5 each after | — | **ramp built in**, pool in v1.1 |
+| Email verification | credits | credits | credits | **included free** | **included free** | — | v1.1 (9b) |
+| Multichannel email + WhatsApp | yes | email-first | email-first | email-first | email + LinkedIn ($29/acct) | email-first | **yes, day one** |
+| AI writer | lemAgent | AI Email Writer | — | AI sequences + A-Z testing | AI writer + interest detection | — | **per-lead, full-row context** |
+| Unified reply inbox | yes | Unibox | yes | yes | centralised inbox | yes | v1.1 (9a) |
+| Out-of-office filtering | — | — | — | — | **yes** | — | v1.1 (9a) |
+| A/B testing | yes | yes | yes | A-Z testing | up to 5 versions | yes | v1.1 (9c) |
+| Per-recipient timezone | yes | yes | yes | yes | **yes** | — | v1.1 (9e) |
+| Spintax | yes | yes | yes | yes | **yes** | — | **yes** |
+| Domain audit (SPF/DKIM) | yes | yes | SmartDelivery | yes | **yes, free** | — | v1 panel (T8) |
+| Agency / whitelabel | Enterprise | $500/mo | $29/client/mo | Enterprise | $27/client/mo | — | roadmap, priced low |
+| Lead database | 650M | 450M | credits | 852M contacts | Lead Finder credits | 50–12.5k credits | bring your own |
+| Spreadsheet import | mapping wizard | mapping wizard | mapping wizard | mapping wizard | mapping wizard | mapping wizard | **auto, multi-sheet, zero wizard** |
+
+Every one of these products makes the user configure a mapping wizard. Not one
+of them reads a four-sheet workbook with a title banner and works out where the
+headers are.
 
 **Where we win:** the import experience, per-lead AI grounded in the whole row,
 WhatsApp as a first-class channel rather than an add-on, and a price floor of
 "your own API keys" for self-hosters.
 
-**Where we must not lose badly:** deliverability. Instantly and Smartlead sell
-dedicated IP infrastructure. v1 answers this with strict caps, warmup ramps,
-throttling with jitter, one-click unsubscribe, suppression lists, and honest
-documentation about domain setup — not with infrastructure we do not have.
+**Where we must not lose badly:** deliverability, and the reply inbox. Instantly
+and Smartlead sell dedicated IP infrastructure; Woodpecker and Saleshandy give
+away email verification and warmup that we charge nothing for yet. v1 answers
+the deliverability half with strict caps, warmup ramps, throttling with jitter,
+one-click unsubscribe, suppression lists and honest documentation about domain
+setup — not with infrastructure we do not have. The reply inbox is the one
+genuine hole in v1 and it is the first item in the roadmap for that reason.
+
+**Pricing models in the market.** Three shapes: per-seat/per-tier (lemlist,
+Instantly, Smartlead, Saleshandy), per-mailbox (Mailshake), and usage-based per
+contacted prospect (Woodpecker, $7 per 100). Woodpecker's shape is the most
+honest for small teams and the easiest to explain — worth offering as an
+alternative to the flat tiers below once billing exists.
 
 ## v1 scope (built)
 
@@ -97,3 +115,12 @@ part of every competitor's pricing page.
   against WhatsApp's terms. The product must say so in the UI (it does), keep
   volumes low, and offer the official Cloud API as the compliant path for
   customers who need one. Do not market WhatsApp blasting.
+
+  If a customer moves to the official Cloud API, the economics changed on
+  1 July 2025: Meta now charges **per message, not per conversation**. Marketing
+  templates are always charged; utility and authentication templates are free
+  inside an open customer-service window and charged outside it; all non-template
+  messages inside an open window are free; service conversations have been free
+  since November 2024. A Click-to-WhatsApp ad or Page CTA opens a 72-hour free
+  window. Cold outreach is by definition a marketing template outside any window
+  — the most expensive category there is. Price that into any plan that offers it.

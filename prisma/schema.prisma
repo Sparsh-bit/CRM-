@@ -1,10 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ─────────────────────────── Tenancy & identity ───────────────────────────
@@ -26,6 +26,7 @@ model Workspace {
   lists       LeadList[]
   leads       Lead[]
   campaigns   Campaign[]
+  messages    Message[]
   templates   Template[]
   suppressions Suppression[]
   jobs        Job[]

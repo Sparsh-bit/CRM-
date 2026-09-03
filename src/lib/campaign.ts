@@ -2,7 +2,7 @@ import { db } from './db';
 import { enqueue } from './queue';
 import { render } from './template';
 import { nanoid } from 'nanoid';
-import type { Lead, Campaign, CampaignStep } from '@prisma/client';
+import type { Lead, Campaign, CampaignStep } from '@/generated/prisma/client';
 
 export function leadMergeContext(lead: Lead, workspace: { senderName: string | null; senderCompany: string | null }) {
   return {

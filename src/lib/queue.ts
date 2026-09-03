@@ -1,5 +1,5 @@
 import { db } from './db';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '@/generated/prisma/client';
 
 export type JobType = 'send_message' | 'generate_drafts' | 'sync_wa_status';
 

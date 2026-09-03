@@ -3,7 +3,16 @@
 ## Stack
 
 - **Next.js 15**, App Router, React 19, TypeScript strict, server actions for all mutations.
-- **PostgreSQL + Prisma 6.** Every table carries `workspaceId`.
+- **PostgreSQL + Prisma 7**, using the `prisma-client` generator and the
+  node-postgres driver adapter. Prisma 7 is Rust-free: no query-engine binary is
+  downloaded or shipped, which cuts deploy size and lets `npm install` succeed on
+  networks that only allow the npm registry. Every table carries `workspaceId`.
+  Two Prisma 7 specifics that will bite anyone porting from v6:
+  the connection URL lives in `prisma.config.ts`, not in `schema.prisma`
+  (a `url` in the datasource block is a hard validation error); and the client
+  is built lazily behind a Proxy in `src/lib/db.ts`, because `next build`
+  imports every module to collect page data and would otherwise demand a
+  database during the build.
 - **Tailwind** for UI. No component library — the surface is small.
 - **A DB-backed job queue** (`Job` table) drained by a long-running worker
   process. No Redis in v1: one less thing to operate, and the volumes involved

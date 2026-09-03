@@ -57,6 +57,10 @@ npm run dev                   # http://localhost:3000
 npm run worker                # in a second terminal — nothing sends without this
 ```
 
+Built on **Prisma 7**, which is Rust-free — there is no query-engine binary to
+download or deploy. The connection URL lives in `prisma.config.ts`, not in
+`schema.prisma`.
+
 Then: **Settings** (who you are, what you sell) → **Mailboxes** (connect one) →
 **Lists** (upload your sheet) → **Campaigns** (template or AI) → review →
 **Launch**.
@@ -113,10 +117,12 @@ pool.
 
 ## Known limits
 
-- `prisma generate` needs network access to `binaries.prisma.sh`. On a locked-down
-  network the client cannot be generated and `npm run typecheck` will report
-  errors that are all downstream of the missing client — `npm run typecheck:lib`
-  checks everything that does not depend on it.
+- `prisma db push` and `prisma migrate` still need `binaries.prisma.sh` for the
+  schema engine. `prisma generate` and the entire runtime do not — the driver
+  adapter replaced the query engine. On a network that blocks that host you can
+  generate and build, but you must run migrations from a machine that can reach
+  it. (`PRISMA_SCHEMA_ENGINE_BINARY=/bin/true npx prisma generate` skips the
+  unnecessary fetch; do not use that trick for migrate.)
 - Opens are approximate. Privacy proxies pre-fetch pixels; the UI says so.
 - Bounce parsing is SMTP-level only. Webhook-based bounce handling per provider
   is a v1.1 task.

@@ -90,6 +90,28 @@ export async function sendText(
   );
 }
 
+export type SendMediaArgs = {
+  mediatype: 'image' | 'video' | 'document' | 'audio';
+  mimetype: string;   // e.g. "image/png", "application/pdf"
+  media: string;      // public URL or base64
+  fileName: string;
+  caption?: string;
+};
+
+export async function sendMedia(
+  instanceName: string,
+  to: string,
+  args: SendMediaArgs,
+  opts: { delayMs?: number; token?: string } = {},
+) {
+  const number = to.replace(/^\+/, '').replace(/[^\d]/g, '');
+  return call<SendTextResult>(
+    `/message/sendMedia/${encodeURIComponent(instanceName)}`,
+    { method: 'POST', body: JSON.stringify({ number, ...args, delay: opts.delayMs ?? 1200 }) },
+    opts.token,
+  );
+}
+
 export async function checkNumberExists(instanceName: string, numbers: string[], token?: string) {
   return call<{ exists: boolean; jid: string; number: string }[]>(
     `/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`,
