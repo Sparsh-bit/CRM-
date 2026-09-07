@@ -10,28 +10,34 @@ datasource db {
 // ─────────────────────────── Tenancy & identity ───────────────────────────
 
 model Workspace {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   name          String
-  slug          String    @unique
-  timezone      String    @default("Asia/Kolkata")
-  senderName    String?   // default "Krishna"
-  senderCompany String?   // default "Concilio"
-  companyBlurb  String?   @db.Text // what we sell — fed to the AI writer
-  plan          String    @default("free")
-  createdAt     DateTime  @default(now())
+  slug          String   @unique
+  timezone      String   @default("Asia/Kolkata")
+  senderName    String? // default "Krishna"
+  senderCompany String? // default "Concilio"
+  companyBlurb  String?  @db.Text // what we sell — fed to the AI writer
+  plan          String   @default("free")
+  createdAt     DateTime @default(now())
 
-  members     Membership[]
-  mailboxes   Mailbox[]
-  waInstances WaInstance[]
-  lists       LeadList[]
-  leads       Lead[]
-  campaigns   Campaign[]
-  messages    Message[]
-  templates   Template[]
+  members      Membership[]
+  mailboxes    Mailbox[]
+  waInstances  WaInstance[]
+  lists        LeadList[]
+  leads        Lead[]
+  campaigns    Campaign[]
+  messages     Message[]
+  templates    Template[]
   suppressions Suppression[]
-  jobs        Job[]
-  apiKeys     ApiKey[]
-  usageEvents UsageEvent[]
+  jobs         Job[]
+  apiKeys      ApiKey[]
+  usageEvents  UsageEvent[]
+
+  agents           Agent[]
+  agentTasks       AgentTask[]
+  approvals        Approval[]
+  approvalPolicies ApprovalPolicy[]
+  agentActivity    AgentActivityLog[]
 }
 
 model User {
@@ -41,6 +47,9 @@ model User {
   passwordHash String
   createdAt    DateTime     @default(now())
   memberships  Membership[]
+
+  createdTasks     AgentTask[] @relation("TaskCreatedBy")
+  decidedApprovals Approval[]  @relation("ApprovalDecidedBy")
 }
 
 model Membership {
@@ -73,15 +82,15 @@ model Mailbox {
   fromName    String
   fromEmail   String
   replyTo     String?
-  provider    String  // smtp | resend | gmail_oauth | outlook_oauth
+  provider    String // smtp | resend | gmail_oauth | outlook_oauth
   status      String  @default("active") // active | paused | error
 
   // SMTP
-  smtpHost     String?
-  smtpPort     Int?
-  smtpSecure   Boolean @default(true)
-  smtpUser     String?
-  smtpPassEnc  String? // encrypted at rest
+  smtpHost    String?
+  smtpPort    Int?
+  smtpSecure  Boolean @default(true)
+  smtpUser    String?
+  smtpPassEnc String? // encrypted at rest
 
   // API / OAuth
   apiKeyEnc       String?
@@ -90,17 +99,17 @@ model Mailbox {
   oauthExpiresAt  DateTime?
 
   // Deliverability governor
-  dailyLimit     Int      @default(50)   // hard cap per 24h
-  warmupEnabled  Boolean  @default(true)
-  warmupStart    Int      @default(10)   // day-1 volume
-  warmupStep     Int      @default(5)    // +N per day
-  minGapSeconds  Int      @default(90)   // throttle between sends
-  jitterSeconds  Int      @default(45)   // random extra delay
-  sentToday      Int      @default(0)
-  sentTodayDate  String?                 // yyyy-mm-dd in workspace tz
-  lastSentAt     DateTime?
-  activatedAt    DateTime @default(now())
-  lastError      String?  @db.Text
+  dailyLimit    Int       @default(50) // hard cap per 24h
+  warmupEnabled Boolean   @default(true)
+  warmupStart   Int       @default(10) // day-1 volume
+  warmupStep    Int       @default(5) // +N per day
+  minGapSeconds Int       @default(90) // throttle between sends
+  jitterSeconds Int       @default(45) // random extra delay
+  sentToday     Int       @default(0)
+  sentTodayDate String? // yyyy-mm-dd in workspace tz
+  lastSentAt    DateTime?
+  activatedAt   DateTime  @default(now())
+  lastError     String?   @db.Text
 
   createdAt DateTime  @default(now())
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -112,23 +121,23 @@ model Mailbox {
 // ─────────────────────────── Channels: whatsapp ───────────────────────────
 
 model WaInstance {
-  id           String    @id @default(cuid())
-  workspaceId  String
-  label        String
-  instanceName String    @unique  // Evolution API instance name
-  number       String?
-  status       String    @default("disconnected") // disconnected | qr | connected | error
-  tokenEnc     String?
-  dailyLimit   Int       @default(150)
-  minGapSeconds Int      @default(45)
-  jitterSeconds Int      @default(30)
-  sentToday    Int       @default(0)
+  id            String    @id @default(cuid())
+  workspaceId   String
+  label         String
+  instanceName  String    @unique // Evolution API instance name
+  number        String?
+  status        String    @default("disconnected") // disconnected | qr | connected | error
+  tokenEnc      String?
+  dailyLimit    Int       @default(150)
+  minGapSeconds Int       @default(45)
+  jitterSeconds Int       @default(30)
+  sentToday     Int       @default(0)
   sentTodayDate String?
-  lastSentAt   DateTime?
-  lastError    String?   @db.Text
-  createdAt    DateTime  @default(now())
-  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  messages     Message[]
+  lastSentAt    DateTime?
+  lastError     String?   @db.Text
+  createdAt     DateTime  @default(now())
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages      Message[]
 
   @@index([workspaceId, status])
 }
@@ -136,24 +145,24 @@ model WaInstance {
 // ─────────────────────────── Leads ───────────────────────────
 
 model LeadList {
-  id           String    @id @default(cuid())
-  workspaceId  String
-  name         String
-  sourceFile   String?
-  filePath     String?
-  sheetName    String?
-  sheets       Json?     // preview of EVERY sheet found in the workbook
-  columnMap    Json?     // canonical field -> source header
-  headers      Json?     // all source headers, in order
-  rowCount     Int       @default(0)
-  createdAt    DateTime  @default(now())
-  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  leads        Lead[]
-  campaigns    Campaign[]
+  id          String     @id @default(cuid())
+  workspaceId String
+  name        String
+  sourceFile  String?
+  filePath    String?
+  sheetName   String?
+  sheets      Json? // preview of EVERY sheet found in the workbook
+  columnMap   Json? // canonical field -> source header
+  headers     Json? // all source headers, in order
+  rowCount    Int        @default(0)
+  createdAt   DateTime   @default(now())
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  leads       Lead[]
+  campaigns   Campaign[]
 }
 
 model Lead {
-  id          String  @id @default(cuid())
+  id          String @id @default(cuid())
   workspaceId String
   listId      String
 
@@ -175,11 +184,11 @@ model Lead {
   custom Json @default("{}")
 
   // enrichment / segmentation
-  tier     String?
-  score    Int?
-  tags     String[] @default([])
+  tier  String?
+  score Int?
+  tags  String[] @default([])
 
-  status   String  @default("new") // new | queued | contacted | replied | bounced | unsubscribed | invalid
+  status     String  @default("new") // new | queued | contacted | replied | bounced | unsubscribed | invalid
   emailValid Boolean @default(true)
   dedupeKey  String?
 
@@ -190,9 +199,9 @@ model Lead {
   messages  Message[]
   drafts    Draft[]
 
+  @@unique([workspaceId, dedupeKey])
   @@index([workspaceId, status])
   @@index([listId])
-  @@unique([workspaceId, dedupeKey])
 }
 
 // ─────────────────────────── Campaigns ───────────────────────────
@@ -206,20 +215,20 @@ model Campaign {
   status      String  @default("draft") // draft | scheduled | running | paused | done
 
   // AI writer configuration
-  aiEnabled   Boolean @default(false)
-  aiPurpose   String? @db.Text  // "what am I mailing them about"
-  aiTone      String  @default("direct, warm, no fluff")
-  aiLanguage  String  @default("English")
-  aiMaxWords  Int     @default(120)
-  aiCta       String? @db.Text
-  aiModel     String?
+  aiEnabled  Boolean @default(false)
+  aiPurpose  String? @db.Text // "what am I mailing them about"
+  aiTone     String  @default("direct, warm, no fluff")
+  aiLanguage String  @default("English")
+  aiMaxWords Int     @default(120)
+  aiCta      String? @db.Text
+  aiModel    String?
 
   // sending window (workspace timezone)
-  sendDays    Int[]   @default([1,2,3,4,5])
-  sendStartHour Int   @default(9)
-  sendEndHour   Int   @default(18)
-  timezone      String @default("Asia/Kolkata")
-  perLeadGapHours Int @default(0)
+  sendDays        Int[]  @default([1, 2, 3, 4, 5])
+  sendStartHour   Int    @default(9)
+  sendEndHour     Int    @default(18)
+  timezone        String @default("Asia/Kolkata")
+  perLeadGapHours Int    @default(0)
 
   trackOpens  Boolean @default(true)
   trackClicks Boolean @default(true)
@@ -228,7 +237,7 @@ model Campaign {
   scheduledAt DateTime?
   startedAt   DateTime?
   finishedAt  DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   list      LeadList?      @relation(fields: [listId], references: [id])
@@ -238,14 +247,14 @@ model Campaign {
 }
 
 model CampaignStep {
-  id         String @id @default(cuid())
+  id         String   @id @default(cuid())
   campaignId String
   order      Int
-  channel    String @default("email") // email | whatsapp
-  delayDays  Int    @default(0)       // wait after previous step
-  subject    String? @db.Text
-  body       String  @db.Text
-  condition  String  @default("no_reply") // always | no_reply | no_open
+  channel    String   @default("email") // email | whatsapp
+  delayDays  Int      @default(0) // wait after previous step
+  subject    String?  @db.Text
+  body       String   @db.Text
+  condition  String   @default("no_reply") // always | no_reply | no_open
   campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, order])
@@ -253,16 +262,16 @@ model CampaignStep {
 
 // AI-written, per-lead, reviewable BEFORE anything is sent
 model Draft {
-  id         String @id @default(cuid())
+  id         String   @id @default(cuid())
   campaignId String
   leadId     String
-  stepOrder  Int    @default(1)
-  channel    String @default("email")
-  subject    String? @db.Text
-  body       String  @db.Text
+  stepOrder  Int      @default(1)
+  channel    String   @default("email")
+  subject    String?  @db.Text
+  body       String   @db.Text
   model      String?
-  approved   Boolean @default(false)
-  edited     Boolean @default(false)
+  approved   Boolean  @default(false)
+  edited     Boolean  @default(false)
   createdAt  DateTime @default(now())
 
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -274,14 +283,14 @@ model Draft {
 // ─────────────────────────── Messages & events ───────────────────────────
 
 model Message {
-  id          String @id @default(cuid())
-  workspaceId String
-  campaignId  String?
-  leadId      String
-  mailboxId   String?
+  id           String  @id @default(cuid())
+  workspaceId  String
+  campaignId   String?
+  leadId       String
+  mailboxId    String?
   waInstanceId String?
-  stepOrder   Int     @default(1)
-  channel     String  @default("email")
+  stepOrder    Int     @default(1)
+  channel      String  @default("email")
 
   toAddress String
   subject   String? @db.Text
@@ -291,14 +300,14 @@ model Message {
   providerId String?
   error      String? @db.Text
 
-  scheduledFor DateTime @default(now())
+  scheduledFor DateTime  @default(now())
   sentAt       DateTime?
   openedAt     DateTime?
   clickedAt    DateTime?
   repliedAt    DateTime?
   bouncedAt    DateTime?
 
-  trackingId String @unique
+  trackingId String   @unique
   createdAt  DateTime @default(now())
 
   workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -315,7 +324,7 @@ model Message {
 model Event {
   id        String   @id @default(cuid())
   messageId String
-  type      String   // open | click | reply | bounce | complaint | unsubscribe | delivered
+  type      String // open | click | reply | bounce | complaint | unsubscribe | delivered
   meta      Json?
   createdAt DateTime @default(now())
   message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
@@ -324,25 +333,25 @@ model Event {
 }
 
 model Suppression {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
-  value       String   // email or phone, lowercased
-  kind        String   @default("email") // email | phone | domain
-  reason      String   @default("unsubscribed")
-  createdAt   DateTime @default(now())
+  value       String // email or phone, lowercased
+  kind        String    @default("email") // email | phone | domain
+  reason      String    @default("unsubscribed")
+  createdAt   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, value])
 }
 
 model Template {
-  id          String @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   name        String
-  channel     String @default("email")
-  subject     String? @db.Text
-  body        String  @db.Text
-  createdAt   DateTime @default(now())
+  channel     String    @default("email")
+  subject     String?   @db.Text
+  body        String    @db.Text
+  createdAt   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
@@ -355,30 +364,194 @@ model Template {
  * the shape; aggregation is a GROUP BY, not a schema change.
  */
 model UsageEvent {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
-  kind        String   // ai_request | ai_tokens | ...
-  quantity    Int      @default(1)
+  kind        String // ai_request | ai_tokens | ...
+  quantity    Int       @default(1)
   meta        Json?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, kind, createdAt])
 }
 
-// DB-backed job queue — no Redis needed for v1
-model Job {
+// ─────────────────────────── AI Workforce ───────────────────────────
+
+/**
+ * These four are named-value fields the rest of the codebase leaves as plain,
+ * comment-documented strings (see Campaign.status, Message.status, etc.) —
+ * validated only by whatever UI happens to constrain them. That convention is
+ * deliberately not followed here: autonomy level and task status gate whether
+ * an AI agent is allowed to act unattended, so an invalid or mistyped value
+ * failing at the database, not just in a form, is the point.
+ */
+enum AutonomyLevel {
+  SuggestOnly
+  DraftAndRequestApproval
+  ExecuteApprovedActions
+  Autonomous
+}
+
+enum TaskStatus {
+  Queued
+  Thinking
+  Working
+  WaitingForInput
+  WaitingForApproval
+  Completed
+  Failed
+  Cancelled
+}
+
+/**
+ * Shared by AgentTask.approvalState (does this task need one, and where is it)
+ * and Approval.status (the decision on one specific proposed action).
+ */
+enum ApprovalState {
+  None
+  Pending
+  Approved
+  Rejected
+}
+
+/**
+ * A remembered answer for future approvals of the same agent + actionType.
+ */
+enum PolicyDecision {
+  AutoApprove
+  AutoReject
+}
+
+model Agent {
+  id           String  @id @default(cuid())
+  workspaceId  String
+  name         String
+  role         String // job title, e.g. "CEO / Strategy", "Research" — not Membership.role
+  department   String?
+  objective    String? @db.Text
+  instructions String? @db.Text // the system prompt
+
+  allowedTools  Json          @default("[]") // tool names this agent may call — enforced at execution, not just here
+  autonomyLevel AutonomyLevel @default(SuggestOnly) // never Autonomous by default
+  status        String        @default("active") // active | paused | archived
+  config        Json          @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks     AgentTask[]
+  approvals Approval[]
+  policies  ApprovalPolicy[]
+  activity  AgentActivityLog[]
+
+  @@index([workspaceId, status])
+}
+
+model AgentTask {
+  id           String  @id @default(cuid())
+  workspaceId  String
+  agentId      String
+  parentTaskId String? // set for a delegated sub-task; depth is capped in application code
+
+  title       String
+  description String?    @db.Text
+  priority    Int        @default(1) // 0=low 1=normal 2=high 3=urgent
+  status      TaskStatus @default(Queued)
+
+  input            Json?
+  output           Json?
+  relatedRecordIds Json          @default("[]") // heterogeneous ids (leads, campaigns, ...), not a single FK
+  approvalState    ApprovalState @default(None)
+
+  createdBy     String? // a User id; null when the task was created by agent delegation, not a human
+  retries       Int     @default(0)
+  maxRetries    Int     @default(3)
+  failureReason String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace  Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent      Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  parentTask AgentTask?         @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks   AgentTask[]        @relation("TaskSubtasks")
+  creator    User?              @relation("TaskCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  approvals  Approval[]
+  activity   AgentActivityLog[]
+
+  @@index([workspaceId, status])
+  @@index([agentId, status])
+  @@index([parentTaskId])
+}
+
+model Approval {
+  id                String        @id @default(cuid())
+  taskId            String
+  agentId           String
+  workspaceId       String
+  actionType        String // e.g. send_message | launch_campaign | delete_data
+  proposedContent   Json
+  affectedRecordIds Json          @default("[]")
+  status            ApprovalState @default(Pending)
+  decidedBy         String? // a User id
+  decidedAt         DateTime?
+  createdAt         DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  task      AgentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  decider   User?     @relation("ApprovalDecidedBy", fields: [decidedBy], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+  @@index([taskId])
+}
+
+model ApprovalPolicy {
+  id          String         @id @default(cuid())
+  workspaceId String
+  agentId     String
+  actionType  String
+  decision    PolicyDecision
+  createdAt   DateTime       @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, agentId, actionType])
+}
+
+model AgentActivityLog {
   id          String   @id @default(cuid())
   workspaceId String
-  type        String   // send_message | generate_drafts | sync_wa_status
-  payload     Json
-  status      String   @default("pending") // pending | running | done | failed
-  runAt       DateTime @default(now())
-  attempts    Int      @default(0)
-  maxAttempts Int      @default(3)
-  lastError   String?  @db.Text
-  lockedAt    DateTime?
+  agentId     String
+  taskId      String? // set when the event happened in the course of a task; absent for e.g. "agent created"
+  type        String // task_created | task_status_changed | tool_called | approval_requested | approval_decided | agent_created | agent_updated | ...
+  meta        Json?
   createdAt   DateTime @default(now())
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent     Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  task      AgentTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([agentId, createdAt])
+  @@index([taskId])
+}
+
+// DB-backed job queue — no Redis needed for v1
+model Job {
+  id          String    @id @default(cuid())
+  workspaceId String
+  type        String // send_message | generate_drafts | sync_wa_status
+  payload     Json
+  status      String    @default("pending") // pending | running | done | failed
+  runAt       DateTime  @default(now())
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  lastError   String?   @db.Text
+  lockedAt    DateTime?
+  createdAt   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([status, runAt])

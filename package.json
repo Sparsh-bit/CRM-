@@ -11,6 +11,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "typecheck": "tsc --noEmit",
     "import:test": "tsx scripts/import-test.ts",
+    "workforce:test": "tsx scripts/agent-workforce-test.ts",
     "test": "tsx scripts/template-test.ts && tsx scripts/mapping-test.ts && tsx scripts/env-test.ts && tsx scripts/role-test.ts && tsx scripts/ai-router-test.ts",
     "typecheck:lib": "tsc --noEmit -p tsconfig.check.json",
     "postinstall": "prisma generate"
