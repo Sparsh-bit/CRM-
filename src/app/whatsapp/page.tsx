@@ -1,20 +1,26 @@
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { getSession, requireRole } from '@/lib/session';
 import { createInstance, connectInstance, connectionState, deleteInstance } from '@/lib/whatsapp/evolution';
 import { encrypt } from '@/lib/crypto';
+import { appUrl } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Pairing and deleting a number are admin-level, as with mailboxes: this is a
+ * credentialed channel connection, not routine day-to-day use.
+ */
 async function addInstance(formData: FormData) {
   'use server';
   const s = await getSession();
   if (!s) redirect('/login');
+  await requireRole('admin');
   const label = String(formData.get('label') || 'WhatsApp');
   const instanceName = String(formData.get('instanceName') || '').replace(/[^a-zA-Z0-9_-]/g, '') || `wa_${Date.now()}`;
   const number = String(formData.get('number') || '').replace(/\D/g, '') || undefined;
 
-  const app = (process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
+  const app = appUrl();
   const secret = process.env.EVOLUTION_WEBHOOK_SECRET;
   const hook = `${app}/api/webhooks/evolution${secret ? `?secret=${encodeURIComponent(secret)}` : ''}`;
 
@@ -69,6 +75,7 @@ async function remove(formData: FormData) {
   'use server';
   const s = await getSession();
   if (!s) redirect('/login');
+  await requireRole('admin');
   const id = String(formData.get('id'));
   const wa = await db.waInstance.findFirstOrThrow({ where: { id, workspaceId: s.workspaceId } });
   try { await deleteInstance(wa.instanceName); } catch { /* already gone */ }

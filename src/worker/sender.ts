@@ -7,8 +7,8 @@ import {
   appendPixel, isHtml, rewriteLinks, textToHtml, unsubscribeBlock, unsubscribeHeaders,
 } from '../lib/email/tracking';
 import { scheduleFollowUp } from '../lib/campaign';
+import { appUrl } from '../lib/env';
 
-const APP_URL = () => (process.env.APP_URL || 'http://localhost:3000').replace(/\/+$/, '');
 const BATCH = Number(process.env.WORKER_BATCH ?? 25);
 
 export type SendSweep = { sent: number; skipped: number; pending: number; retryAt: Date | null };
@@ -102,7 +102,7 @@ async function sendViaEmail(m: any, workspace: any): Promise<Date | null | true>
   const { mb, retryAt } = await pickMailbox(workspace.id, tz);
   if (!mb) return retryAt;
 
-  const app = APP_URL();
+  const app = appUrl();
   const plain = m.body as string;
   let html = isHtml(plain) ? plain : textToHtml(plain);
   html += unsubscribeBlock(app, m.trackingId);

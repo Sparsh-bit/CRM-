@@ -1,13 +1,18 @@
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { getSession, requireRole } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Everything on this page changes what the whole workspace does — the
+ * identity on every email and what the AI writer is told to sell. Admin-level.
+ */
 async function save(formData: FormData) {
   'use server';
   const s = await getSession();
   if (!s) redirect('/login');
+  await requireRole('admin');
   await db.workspace.update({
     where: { id: s.workspaceId },
     data: {

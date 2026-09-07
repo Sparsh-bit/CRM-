@@ -11,7 +11,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "typecheck": "tsc --noEmit",
     "import:test": "tsx scripts/import-test.ts",
-    "test": "tsx scripts/template-test.ts && tsx scripts/mapping-test.ts",
+    "test": "tsx scripts/template-test.ts && tsx scripts/mapping-test.ts && tsx scripts/env-test.ts && tsx scripts/role-test.ts",
     "typecheck:lib": "tsc --noEmit -p tsconfig.check.json",
     "postinstall": "prisma generate"
   },

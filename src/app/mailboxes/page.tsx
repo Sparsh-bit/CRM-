@@ -1,15 +1,21 @@
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
-import { getSession } from '@/lib/session';
+import { getSession, requireRole } from '@/lib/session';
 import { encrypt } from '@/lib/crypto';
 import { effectiveDailyLimit, localDay } from '@/lib/scheduler';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * A mailbox is credentials plus sending capacity, so every write here is
+ * admin-level: a member can send from a mailbox; only an admin can add,
+ * pause or resume one.
+ */
 async function addMailbox(formData: FormData) {
   'use server';
   const s = await getSession();
   if (!s) redirect('/login');
+  await requireRole('admin');
   const provider = String(formData.get('provider') || 'smtp');
   const pass = String(formData.get('smtpPass') || '');
   const apiKey = String(formData.get('apiKey') || '');
@@ -40,6 +46,7 @@ async function toggle(formData: FormData) {
   'use server';
   const s = await getSession();
   if (!s) redirect('/login');
+  await requireRole('admin');
   const id = String(formData.get('id'));
   const mb = await db.mailbox.findFirstOrThrow({ where: { id, workspaceId: s.workspaceId } });
   await db.mailbox.update({ where: { id }, data: { status: mb.status === 'active' ? 'paused' : 'active' } });

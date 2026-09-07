@@ -1,9 +1,9 @@
 import crypto from 'node:crypto';
+import { authSecret } from './env';
 
 // Secrets (SMTP passwords, API keys, OAuth tokens) are never stored in plaintext.
 function key() {
-  const s = process.env.AUTH_SECRET || 'dev-only-insecure-secret-change-me';
-  return crypto.createHash('sha256').update(s).digest();
+  return crypto.createHash('sha256').update(authSecret()).digest();
 }
 
 export function encrypt(plain: string): string {

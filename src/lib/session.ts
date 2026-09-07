@@ -1,8 +1,9 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { db } from './db';
+import { authSecret } from './env';
 
-const secret = () => new TextEncoder().encode(process.env.AUTH_SECRET || 'dev-only-insecure-secret-change-me');
+const secret = () => new TextEncoder().encode(authSecret());
 const COOKIE = 'op_session';
 
 export type SessionData = { userId: string; workspaceId: string };
@@ -43,4 +44,49 @@ export async function currentWorkspace() {
   const s = await getSession();
   if (!s) return null;
   return db.workspace.findUnique({ where: { id: s.workspaceId } });
+}
+
+// ─────────────────────────── Roles ───────────────────────────
+
+export type Role = 'owner' | 'admin' | 'member';
+
+/** Higher wins. A check is "at least this rank", never an equality test. */
+const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };
+
+export function atLeast(role: string, needed: Role): boolean {
+  return (RANK[role as Role] ?? 0) >= RANK[needed];
+}
+
+/**
+ * The session's role in its current workspace.
+ *
+ * Read from the database rather than the cookie on purpose: a role kept in a
+ * signed cookie survives being demoted until the cookie expires, which is a
+ * 30-day window in which a removed admin still has admin.
+ */
+export async function currentRole(): Promise<Role | null> {
+  const s = await getSession();
+  if (!s) return null;
+  const m = await db.membership.findUnique({
+    where: { userId_workspaceId: { userId: s.userId, workspaceId: s.workspaceId } },
+    select: { role: true },
+  });
+  return (m?.role as Role) ?? null;
+}
+
+/**
+ * Gate a destructive or account-level action.
+ *
+ * Every action that deletes data, changes who can send, or touches credentials
+ * calls this. It throws rather than returning a boolean so a forgotten `if`
+ * cannot silently permit the action.
+ */
+export async function requireRole(needed: Role): Promise<{ session: SessionData; role: Role }> {
+  const session = await requireSession();
+  const role = await currentRole();
+  if (!role) throw new Error('You are not a member of this workspace.');
+  if (!atLeast(role, needed)) {
+    throw new Error(`This needs the ${needed} role. You are ${role} in this workspace.`);
+  }
+  return { session, role };
 }
