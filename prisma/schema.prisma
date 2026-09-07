@@ -31,6 +31,7 @@ model Workspace {
   suppressions Suppression[]
   jobs        Job[]
   apiKeys     ApiKey[]
+  usageEvents UsageEvent[]
 }
 
 model User {
@@ -343,6 +344,26 @@ model Template {
   body        String  @db.Text
   createdAt   DateTime @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────── Usage ───────────────────────────
+
+/**
+ * One append-only ledger for every metric worth billing or capping later
+ * (ai_request, ai_tokens today; agent/task/message counters land here too as
+ * those features ship) rather than a table per metric. `kind` + `meta` carry
+ * the shape; aggregation is a GROUP BY, not a schema change.
+ */
+model UsageEvent {
+  id          String   @id @default(cuid())
+  workspaceId String
+  kind        String   // ai_request | ai_tokens | ...
+  quantity    Int      @default(1)
+  meta        Json?
+  createdAt   DateTime @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, kind, createdAt])
 }
 
 // DB-backed job queue — no Redis needed for v1

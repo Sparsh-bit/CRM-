@@ -18,6 +18,8 @@ export type WriterConfig = {
   cta?: string | null;
   channel: 'email' | 'whatsapp';
   model?: string | null;
+  /** For usage tracking — omit only in tests or other non-workspace contexts. */
+  workspaceId?: string;
 };
 
 export const EMAIL_SYSTEM_PROMPT = `You are a senior B2B outbound copywriter. You write ONE cold email to ONE named person at ONE named company, using only the facts supplied about that lead.
@@ -118,6 +120,7 @@ export async function writeMessage(lead: LeadContext, cfg: WriterConfig): Promis
     temperature: 0.7,
     maxTokens: 900,
     model: cfg.model ?? undefined,
+    workspaceId: cfg.workspaceId,
   });
   const j = parseJson(text);
   return {

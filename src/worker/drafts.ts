@@ -29,6 +29,7 @@ export async function generateDrafts(campaignId: string) {
     cta: campaign.aiCta,
     channel,
     model: campaign.aiModel,
+    workspaceId: campaign.workspaceId,
   };
 
   let cursor = 0;
