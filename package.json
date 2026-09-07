@@ -13,6 +13,7 @@
     "import:test": "tsx scripts/import-test.ts",
     "workforce:test": "tsx scripts/agent-workforce-test.ts",
     "runtime:test": "tsx scripts/agent-runtime-test.ts",
+    "tools:test": "tsx scripts/agent-tools-test.ts",
     "test": "tsx scripts/template-test.ts && tsx scripts/mapping-test.ts && tsx scripts/env-test.ts && tsx scripts/role-test.ts && tsx scripts/ai-router-test.ts",
     "typecheck:lib": "tsc --noEmit -p tsconfig.check.json",
     "postinstall": "prisma generate"
@@ -37,6 +38,8 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@reticlehq/next": "^2.13.1",
+    "@reticlehq/react": "^2.13.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.10.5",
     "@types/nodemailer": "^6.4.17",

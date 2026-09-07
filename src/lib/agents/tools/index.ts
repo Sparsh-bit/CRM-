@@ -3,3 +3,7 @@
 // available — the runtime does this once, before executing any task.
 import './echo';
 import './test-fail';
+import './crm';
+import './campaigns';
+import './sales';
+import './research';
