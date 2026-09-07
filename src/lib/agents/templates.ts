@@ -70,9 +70,15 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     role: 'Outreach',
     name: 'Outreach',
     department: 'Sales',
-    objective: 'Read lead and campaign context to prepare for outreach — does not send anything itself.',
-    allowedTools: ['crm:read', 'campaign:read'],
-    autonomyLevel: 'SuggestOnly',
+    objective: 'Draft personalized outreach and propose sending it — every send is approval-controlled by default; it never sends directly.',
+    allowedTools: ['crm:read', 'campaign:read', 'outreach:draft', 'outreach:propose'],
+    // DraftAndRequestApproval, not SuggestOnly: propose_send refuses to run
+    // at all for a SuggestOnly agent (src/lib/agents/outreach.ts), and this
+    // agent's whole objective requires being able to propose. Every
+    // proposal still creates a real Approval regardless — this default
+    // does not skip human review; only an explicit, admin-set
+    // ApprovalPolicy per action type can do that (see docs/agent-outreach.md).
+    autonomyLevel: 'DraftAndRequestApproval',
   },
   {
     role: 'Social/Content Research',

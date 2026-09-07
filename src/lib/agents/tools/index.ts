@@ -7,3 +7,4 @@ import './crm';
 import './campaigns';
 import './sales';
 import './research';
+import './outreach';

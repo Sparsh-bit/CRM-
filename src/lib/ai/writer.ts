@@ -16,7 +16,7 @@ export type WriterConfig = {
   language?: string;
   maxWords?: number;
   cta?: string | null;
-  channel: 'email' | 'whatsapp';
+  channel: 'email' | 'whatsapp' | 'sms';
   model?: string | null;
   /** For usage tracking — omit only in tests or other non-workspace contexts. */
   workspaceId?: string;
@@ -60,6 +60,24 @@ Return strict JSON and nothing else:
 {"subject": "", "body": "...", "personalization_note": "...", "confidence": 0-100}
 - body uses \\n between the lines.`;
 
+export const SMS_SYSTEM_PROMPT = `You are writing ONE first-contact SMS to ONE named person at ONE named company, using only the facts supplied.
+
+NON-NEGOTIABLE RULES
+1. Use only supplied facts. Never invent anything about them.
+2. Maximum 300 characters total (fits two SMS segments) — ideally under 160 (one segment). Shorter than WhatsApp; there is no room for a greeting paragraph.
+3. One sentence on why you are messaging THEM specifically, then one short, low-friction ask. No line breaks.
+4. No links, no emoji, no ALL CAPS, no attachments — SMS cannot render them reliably.
+5. Never open with "Hope you are doing well". Get to the point in the first sentence.
+6. If the contact name is generic (CEO, MD, Manager) or missing, address the company or skip the name entirely.
+7. This is a cold business contact. Be respectful and easy to ignore — no urgency, no false scarcity.
+8. Write in the requested language, natively.
+9. End with who you are (name or company) in a few words — SMS has no signature block.
+
+OUTPUT FORMAT
+Return strict JSON and nothing else:
+{"subject": "", "body": "...", "personalization_note": "...", "confidence": 0-100}
+- body is a single line, no \\n.`;
+
 export type WrittenMessage = {
   subject: string;
   body: string;
@@ -97,7 +115,7 @@ export function buildUserPrompt(lead: LeadContext, cfg: WriterConfig): string {
     cfg.cta ? `PREFERRED CALL TO ACTION: ${cfg.cta}` : '',
     `TONE: ${cfg.tone || 'direct, warm, no fluff'}`,
     `LANGUAGE: ${cfg.language || 'English'}`,
-    `MAX WORDS: ${cfg.maxWords ?? (cfg.channel === 'whatsapp' ? 55 : 120)}`,
+    `MAX WORDS: ${cfg.maxWords ?? (cfg.channel === 'sms' ? 40 : cfg.channel === 'whatsapp' ? 55 : 120)}`,
     '',
     'FACTS ABOUT THIS SPECIFIC LEAD (the only facts you may use):',
     leadFacts(lead),
@@ -113,7 +131,7 @@ function parseJson(text: string): Record<string, unknown> {
 }
 
 export async function writeMessage(lead: LeadContext, cfg: WriterConfig): Promise<WrittenMessage> {
-  const system = cfg.channel === 'whatsapp' ? WHATSAPP_SYSTEM_PROMPT : EMAIL_SYSTEM_PROMPT;
+  const system = cfg.channel === 'whatsapp' ? WHATSAPP_SYSTEM_PROMPT : cfg.channel === 'sms' ? SMS_SYSTEM_PROMPT : EMAIL_SYSTEM_PROMPT;
   const { text, model } = await complete({
     system,
     messages: [{ role: 'user', content: buildUserPrompt(lead, cfg) }],

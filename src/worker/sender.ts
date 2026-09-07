@@ -9,6 +9,7 @@ import {
 } from '../lib/email/tracking';
 import { scheduleFollowUp } from '../lib/campaign';
 import { appUrl } from '../lib/env';
+import { logActivity } from '../lib/agents/activity';
 
 const BATCH = Number(process.env.WORKER_BATCH ?? 25);
 
@@ -20,7 +21,10 @@ export async function sendDueMessages(workspaceId: string): Promise<SendSweep> {
     where: { workspaceId, status: 'queued', scheduledFor: { lte: new Date() } },
     orderBy: { scheduledFor: 'asc' },
     take: BATCH,
-    include: { lead: true, campaign: { include: { steps: { orderBy: { order: 'asc' } } } } },
+    include: {
+      lead: true, campaign: { include: { steps: { orderBy: { order: 'asc' } } } },
+      agentTask: { select: { agentId: true } }, // set only for agent-proposed messages (src/lib/agents/outreach.ts)
+    },
   });
 
   let sent = 0, skipped = 0;
@@ -74,10 +78,25 @@ export async function sendDueMessages(workspaceId: string): Promise<SendSweep> {
       sent++;
       if (campaign) await scheduleFollowUp(campaign, m.lead, m.stepOrder);
       await db.lead.update({ where: { id: m.leadId }, data: { status: 'contacted' } });
+      // Agent-level audit trail for a message that originated from an
+      // agent's approved proposal (src/lib/agents/outreach.ts) — every
+      // human-campaign message has agentTaskId null and this is a no-op for it.
+      if (m.agentTaskId && m.agentTask) {
+        await logActivity(workspaceId, {
+          agentId: m.agentTask.agentId, taskId: m.agentTaskId, type: 'message_sent',
+          meta: { messageId: m.id, channel: m.channel },
+        });
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       await db.message.update({ where: { id: m.id }, data: { status: 'failed', error: msg.slice(0, 1500) } });
       console.error('[send]', m.id, msg);
+      if (m.agentTaskId && m.agentTask) {
+        await logActivity(workspaceId, {
+          agentId: m.agentTask.agentId, taskId: m.agentTaskId, type: 'message_failed',
+          meta: { messageId: m.id, channel: m.channel, error: msg.slice(0, 500) },
+        });
+      }
     }
   }
 

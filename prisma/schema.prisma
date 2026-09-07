@@ -325,7 +325,8 @@ model Message {
   mailboxId    String?
   waInstanceId String?
   smsGatewayId String?
-  stepOrder    Int     @default(1)
+  agentTaskId  String? // set when an AI agent proposed this message (via Approval) rather than a human campaign
+  stepOrder    Int     @default(1) // 0 = an agent-proposed one-off action, not a campaign step
   channel      String  @default("email") // email | whatsapp | sms
 
   toAddress String
@@ -352,10 +353,13 @@ model Message {
   mailbox    Mailbox?    @relation(fields: [mailboxId], references: [id])
   waInstance WaInstance? @relation(fields: [waInstanceId], references: [id])
   smsGateway SmsGateway? @relation(fields: [smsGatewayId], references: [id])
+  agentTask  AgentTask?  @relation(fields: [agentTaskId], references: [id])
+  approval   Approval?
   events     Event[]
 
   @@index([status, scheduledFor])
   @@index([campaignId, status])
+  @@index([agentTaskId])
 }
 
 model Event {
@@ -516,6 +520,7 @@ model AgentTask {
   creator    User?              @relation("TaskCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   approvals  Approval[]
   activity   AgentActivityLog[]
+  messages   Message[]
 
   @@index([workspaceId, status])
   @@index([agentId, status])
@@ -527,18 +532,23 @@ model Approval {
   taskId            String
   agentId           String
   workspaceId       String
-  actionType        String // e.g. send_message | launch_campaign | delete_data
+  actionType        String // e.g. send_email | send_whatsapp | send_sms | launch_campaign | delete_data
   proposedContent   Json
   affectedRecordIds Json          @default("[]")
   status            ApprovalState @default(Pending)
   decidedBy         String? // a User id
   decidedAt         DateTime?
+  // Set once an Approved outreach action materializes a real Message — the
+  // idempotency guard against creating a second Message for one approval,
+  // and the queryable link from "what was approved" to "what actually sent".
+  messageId         String?       @unique
   createdAt         DateTime      @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   task      AgentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
   agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
   decider   User?     @relation("ApprovalDecidedBy", fields: [decidedBy], references: [id], onDelete: SetNull)
+  message   Message?  @relation(fields: [messageId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, status])
   @@index([taskId])

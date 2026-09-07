@@ -17,7 +17,8 @@ export async function generateDrafts(campaignId: string) {
   const leads = (await db.lead.findMany({ where: { listId: campaign.listId } }))
     .filter((l) => !existing.has(l.id));
 
-  const channel: 'email' | 'whatsapp' = campaign.channel === 'whatsapp' ? 'whatsapp' : 'email';
+  const channel: 'email' | 'whatsapp' | 'sms' =
+    campaign.channel === 'whatsapp' ? 'whatsapp' : campaign.channel === 'sms' ? 'sms' : 'email';
   const cfg = {
     purpose: campaign.aiPurpose || 'Introduce our services and ask for a short call.',
     senderName: campaign.workspace.senderName || 'Sales',
