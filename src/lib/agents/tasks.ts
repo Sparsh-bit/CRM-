@@ -30,6 +30,14 @@ export type CreateTaskInput = {
   relatedRecordIds?: string[];
   createdBy?: string | null;
   maxRetries?: number;
+  /**
+   * Defaults to true (unchanged behavior for every existing caller). Pass
+   * false for a task that must not run yet — a pure bookkeeping node (the
+   * Command Center's root task, which never has toolCalls to execute), or a
+   * planned step still waiting on a dependency (src/lib/agents/
+   * commandCenter.ts enqueues it once that dependency actually completes).
+   */
+  enqueue?: boolean;
 };
 
 async function taskDepth(taskId: string): Promise<number> {
@@ -76,11 +84,23 @@ export async function createTask(workspaceId: string, data: CreateTaskInput) {
   });
 
   await logActivity(workspaceId, { agentId: task.agentId, taskId: task.id, type: 'task_created' });
-  // Every task is created Queued — hand it to the same worker/Job queue every
-  // other background operation in this app already runs through.
-  await enqueue(workspaceId, 'run_agent_task', { taskId: task.id });
+  // Every task is created Queued; by default it's handed straight to the
+  // same worker/Job queue every other background operation already runs
+  // through. data.enqueue === false leaves it Queued-but-un-jobbed —
+  // whoever creates it that way is responsible for enqueueing it later.
+  if (data.enqueue !== false) {
+    await enqueue(workspaceId, 'run_agent_task', { taskId: task.id });
+  }
 
   return task;
+}
+
+/** Gives a task created with enqueue:false its Job now that it's actually ready to run. */
+export async function enqueueTask(workspaceId: string, taskId: string) {
+  const task = await db.agentTask.findFirst({ where: { id: taskId, workspaceId } });
+  if (!task) throw new Error('Task not found in this workspace.');
+  if (task.status !== TaskStatus.Queued) return; // already running/resolved — nothing to do
+  await enqueue(workspaceId, 'run_agent_task', { taskId });
 }
 
 /**

@@ -122,7 +122,8 @@ export function buildUserPrompt(lead: LeadContext, cfg: WriterConfig): string {
   ].filter(Boolean).join('\n\n');
 }
 
-function parseJson(text: string): Record<string, unknown> {
+/** Strips ```json fences and leading/trailing prose an LLM sometimes adds around its JSON. Shared by anything that asks a model for strict JSON (also src/lib/agents/planner.ts). */
+export function parseJson(text: string): Record<string, unknown> {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const raw = fenced ? fenced[1] : text;
   const start = raw.indexOf('{'), end = raw.lastIndexOf('}');

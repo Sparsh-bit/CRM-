@@ -17,6 +17,7 @@ import { enqueue } from '../queue';
 import { getTool } from './registry';
 import { updateTaskStatus } from './tasks';
 import { logActivity } from './activity';
+import { onTaskResolved } from './commandCenter';
 import { TaskStatus } from '@/generated/prisma/enums';
 import type { Prisma } from '@/generated/prisma/client';
 import type { Agent, AgentTask } from '@/generated/prisma/client';
@@ -106,6 +107,7 @@ export async function executeAgentTask(workspaceId: string, taskId: string): Pro
     if (e instanceof CancelledSignal) {
       // cancelTask() already recorded task_cancelled when the cancellation was
       // requested — the runtime noticing it mid-loop isn't a second event.
+      await onTaskResolved(workspaceId, task.id); // Cancelled is terminal — a command's dependents need to know
       return; // status is already Cancelled — nothing to overwrite
     }
     const message = e instanceof Error ? e.message : String(e);
@@ -119,6 +121,7 @@ export async function executeAgentTask(workspaceId: string, taskId: string): Pro
 
   await updateTaskStatus(workspaceId, task.id, TaskStatus.Completed, { output: outputs });
   await logActivity(workspaceId, { agentId: task.agentId, taskId: task.id, type: 'task_completed' });
+  await onTaskResolved(workspaceId, task.id); // no-op unless this task belongs to a Command Center plan
 }
 
 async function runToolCalls(task: TaskWithAgent, toolCalls: ToolCall[], outputs: unknown[]): Promise<void> {
@@ -179,6 +182,7 @@ async function terminalFail(task: AgentTask, reason: string): Promise<void> {
   await logActivity(task.workspaceId, {
     agentId: task.agentId, taskId: task.id, type: 'task_failed', meta: { reason: reason.slice(0, 500), retryable: false },
   });
+  await onTaskResolved(task.workspaceId, task.id); // no-op unless this task belongs to a Command Center plan
 }
 
 /** A failure that MIGHT be transient — retry if the task is retry-safe and retries remain, otherwise Failed. */
@@ -206,5 +210,8 @@ async function failWithRetry(task: AgentTask, reason: string, retryable: boolean
     // existing Job queue for the retry itself rather than a second scheduler.
     const delayMs = 30_000 * nextRetries;
     await enqueue(task.workspaceId, 'run_agent_task', { taskId: task.id } as Prisma.InputJsonValue, new Date(Date.now() + delayMs));
+  } else {
+    // Only genuinely terminal now — a command's dependents can't react to a task that's still going to retry.
+    await onTaskResolved(task.workspaceId, task.id);
   }
 }
