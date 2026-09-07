@@ -2,6 +2,7 @@ import { db } from '../lib/db';
 import { canSend, inSendingWindow, localDay, nextWindowOpen } from '../lib/scheduler';
 import { sendEmail, type MailboxLike } from '../lib/email/senders';
 import { sendText } from '../lib/whatsapp/evolution';
+import { sendSms } from '../lib/sms';
 import { decrypt } from '../lib/crypto';
 import {
   appendPixel, isHtml, rewriteLinks, textToHtml, unsubscribeBlock, unsubscribeHeaders,
@@ -57,8 +58,19 @@ export async function sendDueMessages(workspaceId: string): Promise<SendSweep> {
     }
 
     try {
-      if (m.channel === 'email') { const r = await sendViaEmail(m, workspace); if (!r) { bump(r); continue; } }
-      else { const r = await sendViaWhatsApp(m, workspace); if (!r) { bump(r); continue; } }
+      let r: Date | null | true;
+      if (m.channel === 'email') r = await sendViaEmail(m, workspace);
+      else if (m.channel === 'whatsapp') r = await sendViaWhatsApp(m, workspace);
+      else if (m.channel === 'sms') r = await sendViaSms(m, workspace);
+      else throw new Error(`Unknown message channel: ${m.channel}`);
+      // r is `true` on an actual send, or a Date (never null in practice) when
+      // every gateway/mailbox is capped/throttled and the message should be
+      // retried later. `!r` never catches the Date case — a Date is always
+      // truthy — so a blocked message fell through as if it had sent:
+      // scheduleFollowUp/lead.status ran for a message nothing was ever sent
+      // for, and bump() (which sets the real retryAt) never ran. Pre-existing
+      // in the email/WhatsApp path; every channel shares this loop.
+      if (r !== true) { bump(r); continue; }
       sent++;
       if (campaign) await scheduleFollowUp(campaign, m.lead, m.stepOrder);
       await db.lead.update({ where: { id: m.leadId }, data: { status: 'contacted' } });
@@ -172,6 +184,52 @@ async function sendViaWhatsApp(m: any, workspace: any): Promise<Date | null | tr
       data: { status: 'sent', sentAt: new Date(), waInstanceId: chosen.id, providerId: res.key?.id ?? null },
     }),
     db.waInstance.update({
+      where: { id: chosen.id },
+      data: {
+        lastSentAt: new Date(),
+        sentToday: chosen.sentTodayDate === today ? { increment: 1 } : 1,
+        sentTodayDate: today,
+      },
+    }),
+  ]);
+  return true;
+}
+
+async function sendViaSms(m: any, workspace: any): Promise<Date | null | true> {
+  const tz = workspace.timezone;
+  const gateways = await db.smsGateway.findMany({
+    where: { workspaceId: workspace.id, status: 'connected' },
+    orderBy: [{ lastSentAt: 'asc' }], // same round-robin as email/WhatsApp
+  });
+  let chosen: (typeof gateways)[number] | null = null;
+  for (const gw of gateways) {
+    const v = canSend(
+      {
+        dailyLimit: gw.dailyLimit, warmupEnabled: false, sentToday: gw.sentToday,
+        sentTodayDate: gw.sentTodayDate, minGapSeconds: gw.minGapSeconds,
+        jitterSeconds: gw.jitterSeconds, lastSentAt: gw.lastSentAt,
+      },
+      tz,
+    );
+    if (v.ok) { chosen = gw; break; }
+  }
+  if (!chosen) return new Date(Date.now() + 60_000);
+
+  // trackingId already exists uniquely per Message — reused as httpSMS's
+  // own request_id so a duplicate call (a retried job, a race) is also
+  // deduped on the provider's side, not just ours.
+  const res = await sendSms(
+    { id: chosen.id, provider: chosen.provider, phoneNumber: chosen.phoneNumber, apiKeyEnc: chosen.apiKeyEnc },
+    { to: m.toAddress, text: m.body, requestId: m.trackingId },
+  );
+
+  const today = localDay(tz);
+  await db.$transaction([
+    db.message.update({
+      where: { id: m.id },
+      data: { status: 'sent', sentAt: new Date(), smsGatewayId: chosen.id, providerId: res.providerId },
+    }),
+    db.smsGateway.update({
       where: { id: chosen.id },
       data: {
         lastSentAt: new Date(),

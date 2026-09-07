@@ -55,15 +55,19 @@ export async function preflight(campaignId: string): Promise<{
   let sendable = 0;
 
   for (const lead of leads) {
+    // 'both' has only ever meant email+whatsapp — sms stays a standalone
+    // channel value so this doesn't change what an existing "both" campaign does.
     const wantsEmail = campaign.channel === 'email' || campaign.channel === 'both';
     const wantsWa = campaign.channel === 'whatsapp' || campaign.channel === 'both';
+    const wantsSms = campaign.channel === 'sms';
+    const wantsAnyPhoneChannel = wantsWa || wantsSms;
     let leadOk = true;
 
     if (wantsEmail && (!lead.email || !lead.emailValid)) {
-      issues.push({ leadId: lead.id, company: lead.company, severity: wantsWa ? 'warn' : 'block', message: 'No valid email address.' });
-      if (!wantsWa) leadOk = false;
+      issues.push({ leadId: lead.id, company: lead.company, severity: wantsAnyPhoneChannel ? 'warn' : 'block', message: 'No valid email address.' });
+      if (!wantsAnyPhoneChannel) leadOk = false;
     }
-    if (wantsWa && !lead.phone) {
+    if (wantsAnyPhoneChannel && !lead.phone) {
       issues.push({ leadId: lead.id, company: lead.company, severity: wantsEmail ? 'warn' : 'block', message: 'No usable phone number.' });
       if (!wantsEmail) leadOk = false;
     }
@@ -127,8 +131,9 @@ export async function buildQueue(campaignId: string): Promise<{ queued: number }
     if (lead.email && suppressed.has(lead.email)) continue;
     if (lead.phone && suppressed.has(lead.phone)) continue;
 
-    const channels: ('email' | 'whatsapp')[] =
-      campaign.channel === 'both' ? ['email', 'whatsapp'] : [campaign.channel as 'email' | 'whatsapp'];
+    // 'both' still means exactly email+whatsapp, unchanged — 'sms' is its own standalone channel value.
+    const channels: ('email' | 'whatsapp' | 'sms')[] =
+      campaign.channel === 'both' ? ['email', 'whatsapp'] : [campaign.channel as 'email' | 'whatsapp' | 'sms'];
 
     for (const channel of channels) {
       const to = channel === 'email' ? lead.email : lead.phone;

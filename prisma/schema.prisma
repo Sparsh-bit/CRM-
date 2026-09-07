@@ -38,6 +38,8 @@ model Workspace {
   approvals        Approval[]
   approvalPolicies ApprovalPolicy[]
   agentActivity    AgentActivityLog[]
+
+  smsGateways SmsGateway[]
 }
 
 model User {
@@ -138,6 +140,39 @@ model WaInstance {
   createdAt     DateTime  @default(now())
   workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   messages      Message[]
+
+  @@index([workspaceId, status])
+}
+
+// ─────────────────────────── Channels: sms ───────────────────────────
+
+/**
+ * A workspace's connection to an SMS gateway. The customer's own Android
+ * phone/SIM does the actual telecom transmission (httpSMS today) — this row
+ * only ever represents "are we able to reach that device through the
+ * provider's API", never a guarantee of carrier delivery. See
+ * docs/sms-integration.md for the full connected-vs-delivered distinction.
+ */
+model SmsGateway {
+  id          String  @id @default(cuid())
+  workspaceId String
+  label       String
+  provider    String  @default("httpsms") // httpsms | ... (future: a real gateway provider)
+  phoneNumber String // the "from" number registered with the provider — the customer's own device/SIM, not ours
+  apiKeyEnc   String? // encrypted at rest, same as Mailbox.smtpPassEnc / WaInstance.tokenEnc
+  status      String  @default("disconnected") // not_configured | disconnected | connected | error
+
+  dailyLimit    Int       @default(50)
+  minGapSeconds Int       @default(30)
+  jitterSeconds Int       @default(15)
+  sentToday     Int       @default(0)
+  sentTodayDate String?
+  lastSentAt    DateTime?
+  lastError     String?   @db.Text
+
+  createdAt DateTime  @default(now())
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages  Message[]
 
   @@index([workspaceId, status])
 }
@@ -289,8 +324,9 @@ model Message {
   leadId       String
   mailboxId    String?
   waInstanceId String?
+  smsGatewayId String?
   stepOrder    Int     @default(1)
-  channel      String  @default("email")
+  channel      String  @default("email") // email | whatsapp | sms
 
   toAddress String
   subject   String? @db.Text
@@ -315,6 +351,7 @@ model Message {
   lead       Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
   mailbox    Mailbox?    @relation(fields: [mailboxId], references: [id])
   waInstance WaInstance? @relation(fields: [waInstanceId], references: [id])
+  smsGateway SmsGateway? @relation(fields: [smsGatewayId], references: [id])
   events     Event[]
 
   @@index([status, scheduledFor])
