@@ -42,10 +42,14 @@ async function checkGroq(): Promise<void> {
   }
 }
 
+/** Same resolution rule as src/lib/storage/index.ts's r2Config() — R2_ENDPOINT (any S3-compatible service, e.g. a Railway bucket) or R2_ACCOUNT_ID (Cloudflare R2 specifically), either is enough to know where to connect. */
 async function checkR2(): Promise<void> {
-  const required = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET'];
-  if (!required.every((k) => !!process.env[k])) {
-    results.push({ name: 'Cloudflare R2 (real bucket)', status: 'not_tested', detail: `Not all of ${required.join(', ')} are set.` });
+  const accountId = process.env.R2_ACCOUNT_ID, endpoint = process.env.R2_ENDPOINT;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID, secretAccessKey = process.env.R2_SECRET_ACCESS_KEY, bucket = process.env.R2_BUCKET;
+  const label = endpoint ? `S3-compatible bucket (${endpoint})` : 'Cloudflare R2 (real bucket)';
+
+  if (!accessKeyId || !secretAccessKey || !bucket || (!accountId && !endpoint)) {
+    results.push({ name: label, status: 'not_tested', detail: 'Need R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET plus either R2_ACCOUNT_ID or R2_ENDPOINT — not all are set.' });
     return;
   }
   const key = `_provider-check/${Date.now()}.txt`;
@@ -53,8 +57,9 @@ async function checkR2(): Promise<void> {
   try {
     const { r2Upload, r2Download, r2Delete, r2Stat } = await import('../src/lib/storage/r2');
     const cfg = {
-      accountId: process.env.R2_ACCOUNT_ID!, accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!, bucket: process.env.R2_BUCKET!,
+      accountId, endpoint, accessKeyId, secretAccessKey, bucket,
+      region: process.env.R2_REGION,
+      forcePathStyle: process.env.R2_FORCE_PATH_STYLE === undefined ? undefined : process.env.R2_FORCE_PATH_STYLE === 'true',
     };
     await r2Upload(cfg, key, Buffer.from(content), 'text/plain');
     const stat = await r2Stat(cfg, key);
@@ -64,14 +69,14 @@ async function checkR2(): Promise<void> {
 
     const ok = downloaded === content && stat?.sizeBytes === Buffer.byteLength(content) && goneAfterDelete === null;
     results.push({
-      name: 'Cloudflare R2 (real bucket)',
+      name: label,
       status: ok ? 'real_pass' : 'real_fail',
       detail: ok
-        ? `Real upload/download/delete round trip succeeded against bucket "${cfg.bucket}".`
+        ? `Real upload/download/delete round trip succeeded against bucket "${cfg.bucket}" — object confirmed gone after delete.`
         : `Round trip completed but did not verify cleanly (downloaded match: ${downloaded === content}, size match: ${stat?.sizeBytes === Buffer.byteLength(content)}, deleted: ${goneAfterDelete === null}).`,
     });
   } catch (e) {
-    results.push({ name: 'Cloudflare R2 (real bucket)', status: 'real_fail', detail: e instanceof Error ? e.message : String(e) });
+    results.push({ name: label, status: 'real_fail', detail: e instanceof Error ? e.message : String(e) });
   }
 }
 
