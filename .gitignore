@@ -8,3 +8,15 @@ uploads/
 samples/
 *.tsbuildinfo
 src/generated/
+
+# Claude Code local state (agent settings, scheduled-task locks, linked
+# worktrees with their own full node_modules) — never project source.
+.claude/
+
+# Reticle's local runtime state (recorded flows, intent/impact logs) — dev
+# tooling output, not source. .reticle.json (project id, no secrets) and
+# RETICLE.md/src/app/reticle-dev.tsx ARE tracked; this directory is not.
+.reticle/
+
+# Stray local transfer archive, not part of the application.
+_transfer.tgz

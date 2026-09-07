@@ -88,6 +88,23 @@ export function envProblems(): EnvProblem[] {
     });
   }
 
+  // Not made fatal even in production: a workspace with no WhatsApp
+  // instance connected has no real exposure from this, and this check has
+  // no way to know per-deployment whether WhatsApp is actually in use — but
+  // for anyone who IS using it, an unset secret means
+  // src/app/api/webhooks/evolution/route.ts accepts an unauthenticated
+  // POST from anyone who finds the URL (a fake connection-state update, or
+  // a fake "replied" that silently stops a real campaign sequence for a
+  // lead who never actually replied) — real enough to warn about loudly,
+  // every time, not just note in a doc.
+  if (!process.env.EVOLUTION_WEBHOOK_SECRET) {
+    problems.push({
+      key: 'EVOLUTION_WEBHOOK_SECRET',
+      fatal: false,
+      message: 'EVOLUTION_WEBHOOK_SECRET is not set — if WhatsApp is connected, /api/webhooks/evolution accepts an unauthenticated POST from anyone who finds the URL (a fake connection-state update, or a fake "replied" that silently stops a real send sequence). Set it if you use WhatsApp.',
+    });
+  }
+
   return problems;
 }
 
