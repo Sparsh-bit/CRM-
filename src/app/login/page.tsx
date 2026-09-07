@@ -25,7 +25,7 @@ async function submit(formData: FormData) {
       },
     });
     await createSession({ userId: created.id, workspaceId: ws.id });
-    redirect('/settings');
+    redirect('/onboarding');
   }
 
   const ok = await bcrypt.compare(password, user.passwordHash);

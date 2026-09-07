@@ -10,6 +10,7 @@ import {
 import { scheduleFollowUp } from '../lib/campaign';
 import { appUrl } from '../lib/env';
 import { logActivity } from '../lib/agents/activity';
+import { checkQuota, recordUsage, QuotaExceededError } from '../lib/usage/service';
 
 const BATCH = Number(process.env.WORKER_BATCH ?? 25);
 
@@ -33,6 +34,17 @@ export async function sendDueMessages(workspaceId: string): Promise<SendSweep> {
 
   for (const m of messages) {
     const campaign = m.campaign;
+
+    // usage quota, treated exactly like a capped/throttled mailbox (retry
+    // later, never fail or fake-send a message that never went out) — the
+    // one enforcement point for every channel, since every channel funnels
+    // through this same loop.
+    try {
+      await checkQuota(workspaceId, 'message');
+    } catch (e) {
+      if (e instanceof QuotaExceededError) { bump(new Date(Date.now() + 60 * 60_000)); continue; }
+      throw e;
+    }
 
     // sending window
     if (campaign) {
@@ -76,6 +88,7 @@ export async function sendDueMessages(workspaceId: string): Promise<SendSweep> {
       // in the email/WhatsApp path; every channel shares this loop.
       if (r !== true) { bump(r); continue; }
       sent++;
+      await recordUsage(workspaceId, 'message', 1, { channel: m.channel, messageId: m.id });
       if (campaign) await scheduleFollowUp(campaign, m.lead, m.stepOrder);
       await db.lead.update({ where: { id: m.leadId }, data: { status: 'contacted' } });
       // Agent-level audit trail for a message that originated from an

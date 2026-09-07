@@ -1,7 +1,7 @@
 import { db } from './db';
 import type { Prisma } from '@/generated/prisma/client';
 
-export type JobType = 'send_message' | 'generate_drafts' | 'sync_wa_status' | 'run_agent_task';
+export type JobType = 'send_message' | 'generate_drafts' | 'sync_wa_status' | 'run_agent_task' | 'process_media';
 
 export async function enqueue(
   workspaceId: string,

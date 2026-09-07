@@ -1,4 +1,4 @@
-import { db } from '../db';
+import { checkQuota, recordUsage as recordUsageEvent } from '../usage/service';
 
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
@@ -171,19 +171,12 @@ async function openAiCompatible(
   });
 }
 
+/** Records through the central UsageService (src/lib/usage/service.ts) — the ONE place usage is written, not a second bookkeeping path. */
 async function recordUsage(workspaceId: string, provider: string, r: ProviderResult) {
-  try {
-    await db.usageEvent.create({
-      data: {
-        workspaceId,
-        kind: 'ai_request',
-        meta: { provider, model: r.model, ...(r.usage ?? {}) },
-      },
-    });
-  } catch (e) {
-    // Usage accounting must never take down a real send/draft over a logging failure.
-    console.error('[usage]', e instanceof Error ? e.message : e);
-  }
+  await recordUsageEvent(workspaceId, 'ai_request', 1, { provider, model: r.model });
+  const totalTokens = r.usage && (r.usage.inputTokens ?? 0) + (r.usage.outputTokens ?? 0);
+  // Only recorded when the provider actually reported a token count — Section 5: never fabricate a value the provider didn't report.
+  if (totalTokens) await recordUsageEvent(workspaceId, 'ai_tokens', totalTokens, { provider, model: r.model, ...r.usage });
 }
 
 /**
@@ -194,6 +187,12 @@ async function recordUsage(workspaceId: string, provider: string, r: ProviderRes
  * only ever the next distinct, already-configured provider.
  */
 export async function complete(args: CompleteArgs): Promise<CompleteResult> {
+  // Checked BEFORE any provider call is attempted — a workspace over quota
+  // never causes a real (billable) request, honoring "do not consume usage
+  // if the operation never happened" from the other direction too: it never
+  // gets the chance to happen at all.
+  if (args.workspaceId) await checkQuota(args.workspaceId, 'ai_request');
+
   const chain = providerChain();
   const errors: string[] = [];
 

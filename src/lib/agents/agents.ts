@@ -16,6 +16,7 @@ import { atLeast, type Role } from '../session';
 import { parseAutonomyLevel } from './validation';
 import { AutonomyLevel } from '@/generated/prisma/enums';
 import type { Prisma } from '@/generated/prisma/client';
+import { workspaceLimits, checkGaugeQuota } from '../usage/service';
 
 export type AgentActor = { workspaceId: string; role: Role };
 
@@ -43,6 +44,10 @@ export async function createAgent(actor: AgentActor, input: CreateAgentInput) {
   if (!name) throw new Error('Name is required.');
   if (!role) throw new Error('Role is required.');
   const autonomyLevel = input.autonomyLevel ? parseAutonomyLevel(input.autonomyLevel) : AutonomyLevel.SuggestOnly;
+
+  const limits = await workspaceLimits(actor.workspaceId);
+  const existingAgents = await db.agent.count({ where: { workspaceId: actor.workspaceId } });
+  checkGaugeQuota(limits, 'agents', existingAgents);
 
   return db.agent.create({
     data: {

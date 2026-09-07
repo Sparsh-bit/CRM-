@@ -9,6 +9,7 @@ import { db } from '../db';
 import { enqueue } from '../queue';
 import { logActivity } from './activity';
 import { parsePriority, parseTaskStatus } from './validation';
+import { checkQuota, recordUsage } from '../usage/service';
 import { TaskStatus } from '@/generated/prisma/enums';
 import type { Prisma } from '@/generated/prisma/client';
 
@@ -59,6 +60,11 @@ export async function createTask(workspaceId: string, data: CreateTaskInput) {
   const agent = await db.agent.findFirst({ where: { id: data.agentId, workspaceId } });
   if (!agent) throw new Error('Agent not found in this workspace.');
 
+  // Checked before the row is created — a workspace over quota never gets a
+  // new task at all (delegateTask() routes through here too, so this is the
+  // one place, not a check duplicated in both).
+  await checkQuota(workspaceId, 'agent_task');
+
   if (data.parentTaskId) {
     const parent = await db.agentTask.findFirst({ where: { id: data.parentTaskId, workspaceId } });
     if (!parent) throw new Error('Parent task not found in this workspace.');
@@ -84,6 +90,7 @@ export async function createTask(workspaceId: string, data: CreateTaskInput) {
   });
 
   await logActivity(workspaceId, { agentId: task.agentId, taskId: task.id, type: 'task_created' });
+  await recordUsage(workspaceId, 'agent_task', 1, { agentId: task.agentId, taskId: task.id });
   // Every task is created Queued; by default it's handed straight to the
   // same worker/Job queue every other background operation already runs
   // through. data.enqueue === false leaves it Queued-but-un-jobbed —

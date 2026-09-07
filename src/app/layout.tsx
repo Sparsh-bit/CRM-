@@ -1,3 +1,4 @@
+import { ReticleDev } from './reticle-dev';
 import './globals.css';
 import Link from 'next/link';
 import { getSession } from '@/lib/session';
@@ -6,8 +7,8 @@ import { db } from '@/lib/db';
 export const metadata = { title: 'OutreachPilot', description: 'Bulk email + WhatsApp outreach with an AI writer' };
 
 const NAV = [
-  ['/', 'Dashboard'], ['/lists', 'Lists'], ['/campaigns', 'Campaigns'],
-  ['/mailboxes', 'Mailboxes'], ['/whatsapp', 'WhatsApp'], ['/settings', 'Settings'],
+  ['/', 'Dashboard'], ['/onboarding', 'Get Started'], ['/lists', 'Lists'], ['/campaigns', 'Campaigns'], ['/workforce', 'Workforce'],
+  ['/mailboxes', 'Mailboxes'], ['/whatsapp', 'WhatsApp'], ['/sms', 'SMS'], ['/usage', 'Usage'], ['/settings', 'Settings'],
 ];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -16,7 +17,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en">
-      <body>
+      <body>{process.env.NODE_ENV === 'development' ? <ReticleDev /> : null}
         {session && (
           <header className="border-b border-line bg-panel">
             <div className="max-w-6xl mx-auto px-6 h-14 flex items-center gap-6">
