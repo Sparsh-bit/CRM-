@@ -17,7 +17,15 @@ const MAX_UPLOAD_BYTES = Number(process.env.RESEARCH_UPLOAD_MAX_BYTES ?? 200_000
 const ALLOWED_MIME_PREFIXES = ['video/', 'audio/'];
 
 export async function POST(req: Request) {
-  const session = await requireSession();
+  // Found by a peer session's audit: requireSession() throws for an
+  // unauthenticated request, which used to crash uncaught into Next's
+  // generic 500 HTML page instead of a clean, real 401.
+  let session: Awaited<ReturnType<typeof requireSession>>;
+  try {
+    session = await requireSession();
+  } catch {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   const contentLength = Number(req.headers.get('content-length') ?? '0');
   if (contentLength > MAX_UPLOAD_BYTES) {

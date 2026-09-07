@@ -105,6 +105,18 @@ export function envProblems(): EnvProblem[] {
     });
   }
 
+  // Found by a peer session's audit: EVOLUTION_API_URL falls back to
+  // localhost with no production guard (unlike APP_URL, which already has
+  // one) — every WhatsApp send/connect call would silently target
+  // localhost in production if this were ever left unset.
+  if (!process.env.EVOLUTION_API_URL) {
+    problems.push({
+      key: 'EVOLUTION_API_URL',
+      fatal: false,
+      message: 'EVOLUTION_API_URL is not set — src/lib/whatsapp/evolution.ts falls back to http://localhost:8080, so every WhatsApp send/connect call would silently target localhost. Set it if you use WhatsApp.',
+    });
+  }
+
   return problems;
 }
 

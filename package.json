@@ -25,6 +25,7 @@
     "e2e:test": "tsx scripts/e2e-onboarding-test.ts",
     "db-singleton:test": "tsx scripts/db-singleton-test.ts",
     "provider:check": "tsx scripts/provider-check.ts",
+    "security-fixes:test": "tsx scripts/security-fixes-test.ts",
     "test": "tsx scripts/template-test.ts && tsx scripts/mapping-test.ts && tsx scripts/env-test.ts && tsx scripts/role-test.ts && tsx scripts/ai-router-test.ts",
     "typecheck:lib": "tsc --noEmit -p tsconfig.check.json",
     "postinstall": "prisma generate"

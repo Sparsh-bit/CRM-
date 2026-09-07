@@ -23,21 +23,41 @@ async function optOut(tid: string) {
   return true;
 }
 
+// Found by a peer session's audit: a transient DB error inside optOut()
+// used to crash both handlers uncaught into Next's generic 500 HTML page
+// instead of a real response. Now caught and reported honestly — a genuine
+// server error is a distinct outcome from "this link doesn't resolve to a
+// real message" (`ok === false`), never conflated as the same thing.
+async function safeOptOut(tid: string): Promise<{ ok: boolean; error: boolean }> {
+  try {
+    return { ok: await optOut(tid), error: false };
+  } catch (e) {
+    console.error('[unsubscribe]', e);
+    return { ok: false, error: true };
+  }
+}
+
 export async function POST(_req: Request, { params }: { params: Promise<{ tid: string }> }) {
   const { tid } = await params;
-  await optOut(tid);
-  return new Response(null, { status: 200 });
+  const { error } = await safeOptOut(tid);
+  return new Response(null, { status: error ? 500 : 200 });
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ tid: string }> }) {
   const { tid } = await params;
-  const ok = await optOut(tid);
+  const { ok, error } = await safeOptOut(tid);
+  const heading = ok ? 'You are unsubscribed.' : error ? 'Something went wrong.' : 'Link not recognised.';
+  const detail = ok
+    ? 'You will not receive any further messages from this sender.'
+    : error
+      ? 'We hit a temporary error processing this request — please try the link again in a moment.'
+      : 'This unsubscribe link is invalid or has expired.';
   return new Response(
     `<!doctype html><meta charset="utf-8"><title>Unsubscribed</title>
 <div style="font-family:system-ui;max-width:460px;margin:15vh auto;text-align:center;line-height:1.6">
-<h2 style="font-weight:600">${ok ? 'You are unsubscribed.' : 'Link not recognised.'}</h2>
-<p style="color:#666">${ok ? 'You will not receive any further messages from this sender.' : 'This unsubscribe link is invalid or has expired.'}</p>
+<h2 style="font-weight:600">${heading}</h2>
+<p style="color:#666">${detail}</p>
 </div>`,
-    { headers: { 'content-type': 'text/html; charset=utf-8' } },
+    { status: error ? 500 : 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
   );
 }

@@ -6,8 +6,14 @@ import { db } from '@/lib/db';
  * connection state change (so the UI reports connected/disconnected honestly).
  */
 export async function POST(req: Request) {
+  // Fail CLOSED, not open (found by a peer session's audit): this used to
+  // only check the secret `if (secret && ...)`, so an unset/misconfigured
+  // EVOLUTION_WEBHOOK_SECRET meant every request was accepted unauthenticated
+  // — anyone who found this URL could forge a connection-state update or a
+  // fake "replied" that silently stops a real send sequence. Now a missing
+  // secret refuses every request rather than accepting all of them.
   const secret = process.env.EVOLUTION_WEBHOOK_SECRET;
-  if (secret && new URL(req.url).searchParams.get('secret') !== secret) {
+  if (!secret || new URL(req.url).searchParams.get('secret') !== secret) {
     return new Response('forbidden', { status: 403 });
   }
 

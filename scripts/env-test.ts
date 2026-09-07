@@ -27,7 +27,7 @@ function withEnv(vars: Record<string, string | undefined>, fn: () => void) {
 const keysOf = (problems: ReturnType<typeof envProblems>) => problems.map((p) => p.key).sort();
 const fatalKeysOf = (problems: ReturnType<typeof envProblems>) => problems.filter((p) => p.fatal).map((p) => p.key).sort();
 
-const GOOD = { NODE_ENV: 'development', AUTH_SECRET: 'x'.repeat(40), DATABASE_URL: 'postgres://x', APP_URL: 'https://app.example.com', EVOLUTION_WEBHOOK_SECRET: 'x'.repeat(20) };
+const GOOD = { NODE_ENV: 'development', AUTH_SECRET: 'x'.repeat(40), DATABASE_URL: 'postgres://x', APP_URL: 'https://app.example.com', EVOLUTION_WEBHOOK_SECRET: 'x'.repeat(20), EVOLUTION_API_URL: 'https://evolution.example.com' };
 
 withEnv(GOOD, () => check('fully configured -> no problems', envProblems(), []));
 
@@ -50,6 +50,11 @@ withEnv({ ...GOOD, EVOLUTION_WEBHOOK_SECRET: undefined }, () =>
   check('missing EVOLUTION_WEBHOOK_SECRET -> warns (unauthenticated webhook risk), never fatal — not every workspace uses WhatsApp', fatalKeysOf(envProblems()).includes('EVOLUTION_WEBHOOK_SECRET'), false));
 withEnv({ ...GOOD, NODE_ENV: 'production', EVOLUTION_WEBHOOK_SECRET: undefined }, () =>
   check('the warning fires even in production, not just dev', envProblems().some((p) => p.key === 'EVOLUTION_WEBHOOK_SECRET'), true));
+
+withEnv({ ...GOOD, EVOLUTION_API_URL: undefined }, () =>
+  check('missing EVOLUTION_API_URL -> warns (would silently target localhost in prod), never fatal', fatalKeysOf(envProblems()).includes('EVOLUTION_API_URL'), false));
+withEnv({ ...GOOD, NODE_ENV: 'production', EVOLUTION_API_URL: undefined }, () =>
+  check('the EVOLUTION_API_URL warning fires in production too', envProblems().some((p) => p.key === 'EVOLUTION_API_URL'), true));
 
 withEnv({ ...GOOD, APP_URL: undefined }, () =>
   check('missing APP_URL in dev -> warns, not fatal', fatalKeysOf(envProblems()).includes('APP_URL'), false));
