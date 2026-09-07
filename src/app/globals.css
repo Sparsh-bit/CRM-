@@ -13,3 +13,10 @@ body { @apply bg-ink text-slate-200; }
 .pill   { @apply inline-block rounded-full px-2 py-0.5 text-[11px] font-medium; }
 .th     { @apply text-left text-[11px] uppercase tracking-wide text-muted font-semibold px-3 py-2; }
 .td     { @apply px-3 py-2 text-sm border-t border-line align-top; }
+
+/* Status tones — pair with .pill. First real consumer of good/warn/bad. */
+.pill-good  { @apply bg-good/15 text-good; }
+.pill-warn  { @apply bg-warn/15 text-warn; }
+.pill-bad   { @apply bg-bad/15 text-bad; }
+.pill-muted { @apply bg-line text-muted; }
+.pill-accent{ @apply bg-accent/15 text-accent; }
