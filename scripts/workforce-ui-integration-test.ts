@@ -90,19 +90,20 @@ async function main() {
     check('dashboard pending-approval count is 0 before any proposal exists', pendingApprovalCount, 0);
     check('none of the dashboard counts leak into another workspace', await db.agent.count({ where: { workspaceId: other.id } }), 0);
 
-    // ── THE BUG: approving an outreach proposal through the raw decideApproval() the Approvals page currently calls does NOT send anything ──
+    // ── FIXED: approvals/page.tsx's decide() action calls decideApproval() directly, and decideApproval() is now the single
+    // authoritative decision path — it materializes an outreach send itself, so the exact call the UI makes is correct on its own ──
     const propose1 = await proposeOutreach(ws.id, agent.id, outreachTask.id, {
       leadId: lead.id, channel: 'email', subject: 'hi', body: 'hi', reason: 'ui integration test',
     });
     const decidedRaw = await decideApproval(ws.id, propose1.approval.id, 'Approved', human.id);
-    check('raw decideApproval() (what approvals/page.tsx currently calls) flips the approval to Approved...', decidedRaw.status, 'Approved');
-    check('...but creates NO message — this is the real bug: the send is silently never queued', await db.message.count({ where: { workspaceId: ws.id, leadId: lead.id } }), 0);
+    check('decideApproval() — the exact function approvals/page.tsx\'s decide() action calls — flips the approval to Approved', decidedRaw.status, 'Approved');
+    check('...and now DOES create the real, queued message — the bug is fixed at the root (decideApproval itself), not papered over in the UI', await db.message.count({ where: { workspaceId: ws.id, leadId: lead.id } }), 1);
 
     const propose2 = await proposeOutreach(ws.id, agent.id, outreachTask.id, {
       leadId: lead.id, channel: 'whatsapp', body: 'hi', reason: 'ui integration test 2',
     });
     const decidedFixed = await decideOutreachApproval(ws.id, propose2.approval.id, 'Approved', human.id);
-    check('decideOutreachApproval() — the correct function for the Approvals page to call — creates the real queued message', decidedFixed.message?.status, 'queued');
+    check('decideOutreachApproval() — a thin wrapper over the same decideApproval(), for a caller that wants the Message back — also creates the real queued message', decidedFixed.message?.status, 'queued');
 
     // ── approvals list query pattern (approvals/page.tsx) — pending vs. decided split ──
     const pending = await listApprovals(ws.id, { status: ApprovalState.Pending });

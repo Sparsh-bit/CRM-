@@ -8,6 +8,16 @@ import { db } from '../db';
 import { ApprovalState } from '@/generated/prisma/enums';
 import type { Prisma } from '@/generated/prisma/client';
 import { getApprovalPolicy } from './policies';
+import { logActivity } from './activity';
+// outreach.ts imports createApproval/decideApproval/getApproval from here too —
+// a real circular import, but a safe one: both sides only touch each other's
+// exports from inside function bodies, never at module top level, so there is
+// no load-order dependency. This is the ONE place a decision is made (the UI's
+// decide() action calls decideApproval() directly, same as any other caller);
+// outreach.ts registering its own materialization here would need approvals.ts
+// to import it back anyway, so there is no version of "backend-authoritative,
+// single entry point" that avoids this edge.
+import { materializeApprovedMessage, OUTREACH_ACTION_TYPES } from './outreach';
 
 export type CreateApprovalInput = {
   taskId: string;
@@ -71,6 +81,22 @@ export async function decideApproval(
     data: { status: decision, decidedBy, decidedAt: new Date() },
   });
   await db.agentTask.update({ where: { id: approval.taskId }, data: { approvalState: decision } });
+  await logActivity(workspaceId, {
+    agentId: approval.agentId, taskId: approval.taskId,
+    type: decision === 'Approved' ? 'approval_approved' : 'approval_rejected',
+    meta: { approvalId, decidedBy },
+  });
+
+  // The ONE domain-specific consequence a decision can have: an approved
+  // outreach send materializes into a real, queued Message here — the single
+  // authoritative place every caller's decision (the UI's decide() action
+  // included) goes through, so nothing can flip an outreach approval to
+  // Approved without also queuing the send. Non-outreach action types (or a
+  // Rejected decision) pass through unchanged, exactly as before.
+  if (decision === ApprovalState.Approved && OUTREACH_ACTION_TYPES.includes(approval.actionType)) {
+    await materializeApprovedMessage(workspaceId, approvalId);
+    return db.approval.findFirstOrThrow({ where: { id: approvalId, workspaceId } }); // reflect the messageId materialize just set
+  }
   return updated;
 }
 
@@ -78,11 +104,15 @@ export async function getApproval(workspaceId: string, approvalId: string) {
   return db.approval.findFirst({ where: { id: approvalId, workspaceId } });
 }
 
-export async function listApprovals(workspaceId: string, filter?: { taskId?: string; status?: ApprovalState }) {
+export async function listApprovals(
+  workspaceId: string,
+  filter?: { taskId?: string; agentId?: string; status?: ApprovalState },
+) {
   return db.approval.findMany({
     where: {
       workspaceId,
       ...(filter?.taskId ? { taskId: filter.taskId } : {}),
+      ...(filter?.agentId ? { agentId: filter.agentId } : {}),
       ...(filter?.status ? { status: filter.status } : {}),
     },
     orderBy: { createdAt: 'desc' },

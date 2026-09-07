@@ -43,6 +43,9 @@ function actionTypeFor(channel: OutreachChannel): string {
   return `send_${channel}`;
 }
 
+/** The exact set of actionTypes an Approval can carry that mean "this is an outreach send" — read by approvals.ts's decideApproval() to know when to materialize a Message. */
+export const OUTREACH_ACTION_TYPES: readonly string[] = (['email', 'whatsapp', 'sms'] as const).map(actionTypeFor);
+
 /** The exact per-channel "does this lead have what we need" check — mirrors campaign.ts's preflight. */
 function recipientFor(channel: OutreachChannel, lead: { email: string | null; emailValid: boolean; phone: string | null }): string | null {
   if (channel === 'email') return lead.email && lead.emailValid ? lead.email : null;
@@ -151,7 +154,14 @@ export async function proposeOutreach(
   return { approval, summary: `Auto-rejected by workspace policy — nothing will be sent.`, deduped: false };
 }
 
-/** For a human decision on an existing approval (a future UI's "Approve"/"Reject" button calls this). */
+/**
+ * Convenience wrapper for a caller that wants the resulting Message back,
+ * not just the Approval — e.g. a test asserting a send was actually queued.
+ * decideApproval() (approvals.ts) is the single authoritative decision path
+ * now (it materializes outreach sends itself); this does no deciding of its
+ * own, just reshapes that same call's result. Both the UI's decide() action
+ * and this wrapper end up calling the exact same function.
+ */
 export async function decideOutreachApproval(
   workspaceId: string,
   approvalId: string,
@@ -159,22 +169,18 @@ export async function decideOutreachApproval(
   decidedBy: string,
 ) {
   const updated = await decideApproval(workspaceId, approvalId, decision, decidedBy);
-  await logActivity(workspaceId, {
-    agentId: updated.agentId, taskId: updated.taskId,
-    type: decision === 'Approved' ? 'approval_approved' : 'approval_rejected',
-    meta: { approvalId: updated.id, decidedBy },
-  });
-
-  if (decision === 'Approved') return materializeApprovedMessage(workspaceId, approvalId);
-  return { approval: updated, message: null };
+  const message = updated.messageId ? await db.message.findUnique({ where: { id: updated.messageId } }) : null;
+  return { approval: updated, message };
 }
 
 /**
  * Turns an Approved outreach approval into a real Message row on the
  * existing send path. Safe to call more than once for the same approval —
  * Approval.messageId is checked first and the call is a no-op if already set.
+ * Exported so approvals.ts's decideApproval() can invoke it directly — the
+ * one legitimate reason for the circular import noted there.
  */
-async function materializeApprovedMessage(workspaceId: string, approvalId: string) {
+export async function materializeApprovedMessage(workspaceId: string, approvalId: string) {
   const approval = await getApproval(workspaceId, approvalId);
   if (!approval) throw new Error('Approval not found in this workspace.');
   if (approval.status !== ApprovalState.Approved) {

@@ -47,8 +47,3 @@ export function getTool(name: string): ToolDefinition<unknown, unknown> | undefi
 export function listTools(): ToolDefinition<unknown, unknown>[] {
   return [...registry.values()];
 }
-
-/** Test-only: lets scripts/tests reset the registry between runs without restarting the process. */
-export function _clearRegistryForTests(): void {
-  registry.clear();
-}

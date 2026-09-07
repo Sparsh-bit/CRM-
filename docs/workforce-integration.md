@@ -25,26 +25,57 @@ before this phase — no mock data anywhere:
 check so an unhandled enum value fails loudly rather than rendering blank —
 already correctly aligned with every enum this backend defines.
 
-## A real bug found (documented, not fixed — see the pause)
+## A real bug found — fixed at the root
 
 `src/app/workforce/approvals/page.tsx`'s `decide()` server action calls
 `decideApproval()` (`src/lib/agents/approvals.ts`) directly. That function
-is correct for a *generic* approval, but an approval created by an Outreach
-agent's `propose_send` tool (Phase 6) needs `decideOutreachApproval()`
-(`src/lib/agents/commandCenter.ts`) instead — the wrapper that actually
-creates the real, queued `Message` once approved.
+used to be correct only for a *generic* approval — an approval created by an
+Outreach agent's `propose_send` tool (Phase 6) needed `decideOutreachApproval()`
+(`src/lib/agents/outreach.ts`) instead, the wrapper that actually created the
+real, queued `Message` once approved. Approving an outreach proposal through
+the UI's own call silently never queued the send.
 
-**Concrete, reproduced evidence** (`scripts/workforce-ui-integration-test.ts`):
-approving an outreach proposal through the currently-wired `decideApproval()`
-flips the `Approval` to `Approved` but creates **zero** `Message` rows —
-the send is silently never queued. Approving the identical kind of proposal
-through `decideOutreachApproval()` correctly creates a real, `queued`
-`Message`. Both paths were exercised against real Postgres in the same test
-run, back to back, to make the difference undeniable.
+**Fixed at the root, not in the UI**: `decideApproval()` is now the single
+authoritative decision path every caller goes through, including the UI's
+`decide()` action, `decideOutreachApproval()`, and any future caller. After
+flipping the `Approval`'s status and logging `approval_approved`/
+`approval_rejected` (moved here from `outreach.ts` — one logging site, not
+two), it checks whether the approval's `actionType` is one of
+`outreach.ts`'s `OUTREACH_ACTION_TYPES` (`send_email`/`send_whatsapp`/
+`send_sms`) and, if so and the decision is `Approved`, calls
+`materializeApprovedMessage()` (now exported from `outreach.ts`) itself. A
+generic, non-outreach approval passes through unchanged, exactly as before.
 
-The fix is a 2-line change (swap the import and the one function call in
-`decide()`) with no UI/JSX change — flagged to the frontend session, who
-is holding it for their user's sign-off (see below).
+`decideOutreachApproval()` is now a thin wrapper: it calls `decideApproval()`
+and reshapes the result into `{ approval, message }` for a caller that wants
+the `Message` back (existing tests do) — it no longer decides anything or
+duplicates the materialize/log logic itself.
+
+**No frontend file was touched.** `src/app/workforce/approvals/page.tsx`
+already called `decideApproval()` directly — that call is now correct on its
+own, which is what "the backend determines the correct domain behavior, the
+UI only requests Approve/Reject" means concretely here.
+
+This does introduce one real circular import (`approvals.ts` ↔ `outreach.ts`)
+— documented at the import site in `approvals.ts`. It's safe: both sides
+only touch each other's exports from inside function bodies, never at module
+top level, so there is no load-order dependency, and it's confirmed working
+by `npm run typecheck` and `npm run build` (same 5 Workforce routes as
+before, nothing added or removed).
+
+**Regression coverage**: `scripts/approval-regression-test.ts`
+(`npm run approval:test`) drives the exact function the UI calls —
+`decideApproval()`, never `decideOutreachApproval()` — for email, WhatsApp,
+and SMS: Approve creates a real queued `Message`, a real `send_message`
+`Job`, and the expected `AgentActivityLog` entries; Reject creates neither
+and logs only `approval_rejected`; a decided approval cannot be decided
+again; workspace isolation is enforced (workspace B cannot decide workspace
+A's approval); and one approved message is driven end-to-end by a real,
+separately spawned `npm run worker` process (not an in-process call) to a
+genuine terminal state. `scripts/workforce-ui-integration-test.ts`'s
+side-by-side comparison of `decideApproval()` vs. `decideOutreachApproval()`
+was updated to assert the fixed behavior (both now create the message)
+instead of the old bug.
 
 ## Backend contracts ready, not yet wired to any page
 
@@ -58,22 +89,22 @@ is holding it for their user's sign-off (see below).
   in-runtime retry, per Phase 3). Offered to build it; the frontend session
   asked to hold this too pending their user.
 
-## Coordination and the pause
+## Coordination and the pause — lifted
 
 Before touching anything, this session messaged the frontend session
 (`mailing-software-2d`) with the bug above and the two ready-but-unwired
-contracts, asking before making even the 2-line approvals fix. Their
-response: their user has asked to keep the current Workforce UI "exactly as
-verified" and paused all three (the approvals fix, the Command Center page,
-and task-retry) pending further instructions. This session acknowledged and
-held all three — no code under `src/app/workforce` or `src/components` was
-touched, and no browser session was driven against their UI while it's
-paused for review, consistent with "STOP and coordinate rather than
-overwriting" for frontend-owned files.
+contracts, asking before making even the fix. Their user then confirmed the
+bug and cleared this session to establish the corrected backend contract;
+the frontend session asked to be told once it was settled, since they didn't
+want to patch their own side independently in the meantime. That contract is
+now settled (this doc), and the frontend session has been messaged back with
+exactly what to expect: `src/app/workforce/approvals/page.tsx`'s `decide()`
+action needs **no change** — it already calls `decideApproval()`, and that
+call is now correct on its own.
 
-This is why Phase 8's actual deliverable this round is backend verification
-and documentation, not new UI wiring — the wiring itself is one message
-away from happening once the pause lifts.
+The Command Center page and task-retry are still paused, untouched, exactly
+as before — this round's fix was scoped to the approvals bug only, per
+explicit instruction not to redesign the Workforce UI or add new features.
 
 ## Tests
 
@@ -96,34 +127,71 @@ real Postgres (not rendering or driving any page):
 
 ## Browser verification
 
-**Not performed this phase.** Section 19 asked for real browser flows, but
-the frontend session's user has asked to keep the current UI "exactly as
-verified" pending their own review — driving it via Reticle while that
-review is in progress risked stepping on that process, so this session held
-off entirely rather than proceed unilaterally. Will run it once the
-frontend session confirms the pause has lifted.
+**Performed, against the real running app via Reticle**, now that the pause
+has lifted: dev server started, a fresh real login created a real user +
+workspace, a real outreach agent + two real Pending outreach approvals
+(email) were seeded directly against Postgres, then driven from
+`/workforce/approvals` in a real browser tab:
+
+- Clicked the real **Approve** button → the proposal left "Waiting on you",
+  a real `Approved` row appeared in "Recent decisions", and (confirmed
+  against Postgres in the same run) the `Approval` had a real `messageId`,
+  the `Message` was `queued` on the `email` channel, and a real
+  `send_message` `Job` existed.
+- Clicked the real **Reject** button → "Waiting on you" went back to
+  "Nothing needs your approval right now.", a `Rejected` row appeared, and
+  (confirmed against Postgres) `messageId` stayed `null` and zero `Message`
+  rows exist for that lead.
+
+Both actions were the actual `decide()` server action wired to the actual
+`decideApproval()` call already in `src/app/workforce/approvals/page.tsx` —
+no test-only code path, no direct service call standing in for the UI. The
+throwaway browser-test workspace/user/data was deleted afterward; the dev
+server this session started for the check was stopped afterward too.
 
 ## Regression
 
 `npm test`, `workforce:test`, `runtime:test`, `tools:test`, `sms:test`,
-`sender:test`, `outreach:test`, `command-center:test` — all pass, unchanged
-from Phase 7. `npm run typecheck` and `npm run build` both clean; the build
-output lists the same 5 Workforce routes as before this phase (nothing
-added, nothing removed) since no frontend file was touched.
+`outreach:test`, `command-center:test`, `workforce-ui:test`, and the new
+`approval:test` — all pass. `npm run typecheck` and `npm run build` both
+clean; the build output lists the same 5 Workforce routes as before this
+phase (nothing added, nothing removed) since no frontend file was touched.
 
 ## Files changed this phase
 
-- `scripts/workforce-ui-integration-test.ts` (new)
+Backend fix round (this update):
+- `src/lib/agents/approvals.ts` — `decideApproval()` is now the single
+  authoritative decision path: logs `approval_approved`/`approval_rejected`
+  and materializes an outreach send itself when `actionType` is one of
+  `outreach.ts`'s `OUTREACH_ACTION_TYPES`.
+- `src/lib/agents/outreach.ts` — exports `OUTREACH_ACTION_TYPES` and
+  `materializeApprovedMessage`; `decideOutreachApproval()` is now a thin
+  reshape wrapper over `decideApproval()`, no duplicated logic.
+- `src/lib/agents/registry.ts` — deleted the dead `_clearRegistryForTests()`
+  export (zero callers anywhere).
+- `prisma/schema.prisma` — documentation-only comments on `Agent.config` and
+  `Approval.affectedRecordIds` explaining their reserved-extensibility
+  status (retained, not deleted — no schema shape change, no migration).
+- `scripts/workforce-ui-integration-test.ts` — the bug-demonstration
+  assertions now assert the fixed behavior.
+- `scripts/approval-regression-test.ts` (new) + `package.json`
+  (+`approval:test` script).
+- `docs/workforce-integration.md` (this file).
+
+Earlier this phase (backend verification/docs round):
+- `scripts/workforce-ui-integration-test.ts` (created)
 - `package.json` (+`workforce-ui:test` script)
-- `docs/workforce-integration.md` (this file)
 
 Nothing else. No file under `src/app/workforce`, `src/components`, or any
-other frontend path was modified.
+other frontend path was modified, in either round.
 
 ## Known limitations
 
-- The approvals bug is documented and reproduced, not fixed — waiting on
-  the frontend session's user.
 - No Command Center UI, no task-retry UI/backend function — both offered,
-  both paused by request.
-- No browser verification performed this phase, for the same reason.
+  both still paused by request; out of scope for this round's fix.
+- `disableGateway()` (`src/lib/sms/gateways.ts`) looked like dead code on
+  first pass but is not — it's part of the same documented, deliberate
+  backend-only CRUD surface as `createGateway`/`updateGateway`/
+  `deleteGateway` (the file's own header comment: "No page calls this yet
+  ... this is the service layer a future /sms settings page wires up to").
+  Retained, not deleted.
