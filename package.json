@@ -18,6 +18,7 @@
     "sender:test": "tsx scripts/sender-governor-test.ts",
     "outreach:test": "tsx scripts/agent-outreach-test.ts",
     "command-center:test": "tsx scripts/command-center-test.ts",
+    "workforce-ui:test": "tsx scripts/workforce-ui-integration-test.ts",
     "test": "tsx scripts/template-test.ts && tsx scripts/mapping-test.ts && tsx scripts/env-test.ts && tsx scripts/role-test.ts && tsx scripts/ai-router-test.ts",
     "typecheck:lib": "tsc --noEmit -p tsconfig.check.json",
     "postinstall": "prisma generate"
