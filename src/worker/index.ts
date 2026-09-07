@@ -1,10 +1,13 @@
 /**
  * Background worker.  Run alongside the web app:   npm run worker
  *
- * It does three things, forever:
+ * It does four things, forever:
  *   1. drains AI draft-generation jobs
  *   2. sends due messages, obeying per-mailbox caps, warmup, throttle and sending windows
  *   3. polls WhatsApp instance connection state
+ *   4. executes queued AI agent tasks (AgentRuntime) — never sends anything
+ *      itself; a task that needs to send goes through the exact same
+ *      Message/mailbox/WaInstance path as (2), never a shortcut.
  */
 import 'dotenv/config';
 import { db } from '../lib/db';
@@ -12,6 +15,7 @@ import { claimJob, completeJob, failJob, reclaimStale, rescheduleJob, enqueue } 
 import { sendDueMessages } from './sender';
 import { generateDrafts } from './drafts';
 import { syncWaStatus } from './wa';
+import { executeAgentTask } from '../lib/agents/runtime';
 
 const TICK_MS = Number(process.env.WORKER_TICK_MS ?? 5000);
 
@@ -33,6 +37,12 @@ async function tick() {
           await rescheduleJob(job.id, result.retryAt ?? new Date(Date.now() + 60_000));
           return;
         }
+      } else if (job.type === 'run_agent_task') {
+        // executeAgentTask handles its own domain-level retry (re-enqueueing
+        // a fresh run_agent_task job on a retryable failure) and only lets an
+        // unexpected/infrastructure error reach this catch block, where it
+        // gets the same generic Job-level retry every other job type does.
+        await executeAgentTask(job.workspaceId, String((payload as { taskId?: string }).taskId));
       }
       await completeJob(job.id);
     } catch (e) {

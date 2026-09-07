@@ -6,9 +6,16 @@
  * the calling workspace, or the lookup fails exactly as if it didn't exist.
  */
 import { db } from '../db';
+import { enqueue } from '../queue';
+import { logActivity } from './activity';
 import { parsePriority, parseTaskStatus } from './validation';
 import { TaskStatus } from '@/generated/prisma/enums';
 import type { Prisma } from '@/generated/prisma/client';
+
+/** Statuses a task can still be moved out of by a cancel request. */
+const CANCELLABLE_STATUSES: string[] = [
+  TaskStatus.Queued, TaskStatus.Thinking, TaskStatus.Working, TaskStatus.WaitingForApproval, TaskStatus.WaitingForInput,
+];
 
 /** Hard ceiling on agent-to-agent delegation chains — see docs/prompts for the collaboration rules this backs. */
 export const MAX_TASK_DEPTH = 5;
@@ -53,7 +60,7 @@ export async function createTask(workspaceId: string, data: CreateTaskInput) {
     }
   }
 
-  return db.agentTask.create({
+  const task = await db.agentTask.create({
     data: {
       workspaceId,
       agentId: data.agentId,
@@ -67,6 +74,43 @@ export async function createTask(workspaceId: string, data: CreateTaskInput) {
       ...(data.maxRetries !== undefined ? { maxRetries: data.maxRetries } : {}),
     },
   });
+
+  await logActivity(workspaceId, { agentId: task.agentId, taskId: task.id, type: 'task_created' });
+  // Every task is created Queued — hand it to the same worker/Job queue every
+  // other background operation in this app already runs through.
+  await enqueue(workspaceId, 'run_agent_task', { taskId: task.id });
+
+  return task;
+}
+
+/**
+ * One task creating another, on behalf of the same or a different agent.
+ * Depth limiting is inherited from createTask() — this is purely the
+ * bookkeeping layer: it exists so the handoff itself is a real, logged event
+ * distinct from "an agent happened to create a task with a parentTaskId".
+ */
+export async function delegateTask(workspaceId: string, parentTaskId: string, data: Omit<CreateTaskInput, 'parentTaskId'>) {
+  const parent = await db.agentTask.findFirst({ where: { id: parentTaskId, workspaceId } });
+  if (!parent) throw new Error('Parent task not found in this workspace.');
+
+  const child = await createTask(workspaceId, { ...data, parentTaskId });
+  await logActivity(workspaceId, {
+    agentId: parent.agentId, taskId: parent.id,
+    type: 'delegation_created', meta: { childTaskId: child.id, toAgentId: data.agentId },
+  });
+  return child;
+}
+
+/** Refuses to "cancel" a task that has already reached a terminal state. */
+export async function cancelTask(workspaceId: string, taskId: string) {
+  const task = await db.agentTask.findFirst({ where: { id: taskId, workspaceId } });
+  if (!task) throw new Error('Task not found in this workspace.');
+  if (!CANCELLABLE_STATUSES.includes(task.status)) {
+    throw new Error(`Cannot cancel a task that is already ${task.status}.`);
+  }
+  const cancelled = await db.agentTask.update({ where: { id: taskId }, data: { status: TaskStatus.Cancelled } });
+  await logActivity(workspaceId, { agentId: task.agentId, taskId: task.id, type: 'task_cancelled' });
+  return cancelled;
 }
 
 export async function getTask(workspaceId: string, taskId: string) {
