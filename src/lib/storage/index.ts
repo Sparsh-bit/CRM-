@@ -8,10 +8,13 @@
  * (Section 10). No internal filesystem/R2 path is ever handed back to a
  * caller — only the sub-key the caller itself chose.
  *
- * Provider selection: STORAGE_PROVIDER=r2 (+ R2_ACCOUNT_ID/
- * R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET) or local (default — "do
- * not make R2 mandatory yet", Section 8). An explicit STORAGE_PROVIDER=r2
- * with missing config fails fast and loud, not a silent fallback to local.
+ * Provider selection: STORAGE_PROVIDER=r2 or local (default — "do not make
+ * R2 mandatory yet", Section 8). The "r2" backend accepts either Cloudflare
+ * R2 (R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET) or any
+ * other S3-compatible service, e.g. a Railway-hosted bucket (R2_ENDPOINT
+ * instead of R2_ACCOUNT_ID, same other three vars) — see r2.ts. An explicit
+ * STORAGE_PROVIDER=r2 with missing config fails fast and loud, not a silent
+ * fallback to local.
  */
 import { saveFile, resolvePath, removeFile, removeDir, statFile } from './local';
 import { r2Upload, r2Download, r2Delete, r2Stat, r2DownloadToTempFile, type R2Config } from './r2';
@@ -25,16 +28,18 @@ function assertSafeSubKey(subKey: string): void {
 }
 
 function r2Config(): R2Config | null {
-  const accountId = process.env.R2_ACCOUNT_ID, accessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY, bucket = process.env.R2_BUCKET;
-  if (!accountId || !accessKeyId || !secretAccessKey || !bucket) return null;
-  return { accountId, accessKeyId, secretAccessKey, bucket };
+  const accountId = process.env.R2_ACCOUNT_ID, endpoint = process.env.R2_ENDPOINT;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID, secretAccessKey = process.env.R2_SECRET_ACCESS_KEY, bucket = process.env.R2_BUCKET;
+  if (!accessKeyId || !secretAccessKey || !bucket) return null;
+  if (!accountId && !endpoint) return null; // need one or the other to know where to connect
+  const forcePathStyle = process.env.R2_FORCE_PATH_STYLE === undefined ? undefined : process.env.R2_FORCE_PATH_STYLE === 'true';
+  return { accountId, endpoint, accessKeyId, secretAccessKey, bucket, forcePathStyle, region: process.env.R2_REGION };
 }
 
 function provider(): 'local' | 'r2' {
   const p = (process.env.STORAGE_PROVIDER ?? 'local').toLowerCase();
   if (p === 'r2') {
-    if (!r2Config()) throw new Error('STORAGE_PROVIDER=r2 but R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET are not all set — refusing to silently fall back to local storage.');
+    if (!r2Config()) throw new Error('STORAGE_PROVIDER=r2 but required variables are missing — need R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET plus either R2_ACCOUNT_ID (Cloudflare R2) or R2_ENDPOINT (any other S3-compatible service). Refusing to silently fall back to local storage.');
     return 'r2';
   }
   return 'local';
