@@ -8,3 +8,4 @@ import './campaigns';
 import './sales';
 import './research';
 import './outreach';
+import './socialResearch';

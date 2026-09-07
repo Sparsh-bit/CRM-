@@ -169,12 +169,10 @@ async function main() {
     checkTrue('analyze_campaign_performance benchmarks against other campaigns', perf.data.workspaceBenchmark !== null || perf.data.observations.length > 0);
     checkTrue('analyze_campaign_performance produces at least one factual observation', perf.data.observations.length > 0);
 
-    const notConfigured = await call('research_external_content', { url: 'https://example.com/post' }, ctx);
-    check('research_external_content is honest about not being implemented', notConfigured.data.status, 'not_configured');
-    check('research_external_content never claims to have fetched anything', notConfigured.count, 0);
-    let badUrlRejected = false;
-    try { await call('research_external_content', { url: 'not-a-url' }, ctx); } catch (e) { badUrlRejected = (e as { zod?: boolean }).zod === true; }
-    checkTrue('research_external_content rejects a non-URL input', badUrlRejected);
+    // research_external_content (the honest not-implemented stub) was retired
+    // in Phase 9 — real web/social research tools now live in
+    // scripts/research-test.ts (socialResearch.ts), covering the same
+    // permission/schema/activity-logging plumbing plus real behavior.
 
     // ── permission enforcement through the real runtime ───────────────
     const admin: AgentActor = { workspaceId: ws.id, role: 'admin' };

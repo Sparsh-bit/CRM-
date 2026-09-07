@@ -139,19 +139,7 @@ registerTool({
   },
 });
 
-// ── research_external_content ─────────────────────────────────────────────
-registerTool({
-  name: 'research_external_content',
-  description:
-    'Would analyze an external URL (a website, a social post) for business-model/audience/hook signals. NOT YET IMPLEMENTED — no web-fetch or content-extraction provider is configured in this build. Always returns a clear not-configured result; never fetches or fabricates content. Kept registered so the tool architecture (permission, schema, activity logging) is ready for a real implementation later.',
-  inputSchema: z.object({ url: z.string().url() }),
-  outputSchema: resultSchema(z.object({ status: z.literal('not_configured') })),
-  requiredPermission: 'research:analysis',
-  category: 'research',
-  readOnly: true,
-  idempotent: true,
-  handler: async (input) => {
-    const message = `Web research is not implemented in this build. Cannot analyze ${input.url} — no fetch was attempted.`;
-    return toolResult({ status: 'not_configured' as const }, 0, message);
-  },
-});
+// research_external_content (the honest not-implemented stub) was retired in
+// Phase 9 — replaced by the real analyze_web_content/analyze_social_content
+// tools in src/lib/agents/tools/socialResearch.ts, which actually fetch and
+// analyze content instead of always reporting not_configured.

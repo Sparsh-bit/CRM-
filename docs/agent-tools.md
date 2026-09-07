@@ -21,7 +21,10 @@ later phase, and stays behind the approval system (Phase 2) when it ships.
 | `campaign:read` | `get_campaign`, `list_campaigns`, `get_campaign_activity` |
 | `campaign:analytics` | `get_campaign_metrics`, `compare_campaigns` |
 | `sales:prioritization` | `find_high_priority_leads`, `identify_uncontacted_leads`, `identify_replied_leads`, `identify_recently_active_leads`, `summarize_lead_history` |
-| `research:analysis` | `summarize_lead`, `analyze_campaign_performance`, `research_external_content` |
+| `research:analysis` | `summarize_lead`, `analyze_campaign_performance` |
+| `research:web` (Phase 9) | `web_search`, `fetch_web_page`, `analyze_web_content`, `get_media_analysis` — see `docs/research.md` |
+| `research:social` (Phase 9) | `analyze_social_content`, `analyze_uploaded_media` — see `docs/research.md` |
+| `research:knowledge` (Phase 9) | `save_to_knowledge`, `search_knowledge` — see `docs/research.md` |
 
 Built-in test-only fixtures (`echo`, `test-fail`, `test-fail-safe` — Phase 3)
 each require their own single-tool permission and are never assigned to a
@@ -107,7 +110,14 @@ on until real scoring data exists.
 |---|---|---|---|
 | `summarize_lead` | The fullest structured profile of one lead in one call: canonical fields + every custom imported column (`Lead.custom`, which no CRM tool otherwise exposes) + a real history rollup | `{ leadId }` | read |
 | `analyze_campaign_performance` | `get_campaign_metrics` plus a benchmark against this workspace's other campaigns and a few factual, templated observations | `{ campaignId }` | read |
-| `research_external_content` | **Not implemented.** Always returns `{ status: "not_configured" }` — never fetches a URL, never fabricates content. Registered now so permission/schema/activity-logging plumbing is ready for a real web-research provider later. | `{ url }` | read (no-op) |
+
+`research_external_content` (the honest not-implemented stub) was retired in
+Phase 9 — replaced by real web/social research tools in
+`src/lib/agents/tools/socialResearch.ts`. See `docs/research.md` for
+`web_search`, `fetch_web_page`, `analyze_web_content`, `analyze_social_content`,
+`analyze_uploaded_media`, `get_media_analysis`, `save_to_knowledge`, and
+`search_knowledge` — not duplicated here to avoid two documents drifting out
+of sync.
 
 `summarize_company` was considered and **not** added — it would return
 exactly what `get_company` (CRM tools) already returns; adding it would be
@@ -127,12 +137,12 @@ doesn't need for its stated objective.
 | Role | Granted permissions |
 |---|---|
 | CEO / Strategy | `campaign:read`, `campaign:analytics`, `crm:read`, `crm:companies`, `research:analysis` |
-| Research | `crm:read`, `crm:companies`, `research:analysis` |
+| Research | `crm:read`, `crm:companies`, `research:analysis`, `research:web` (Phase 9), `research:knowledge` (Phase 9) |
 | Sales | `crm:read`, `sales:prioritization`, `campaign:read`, `campaign:analytics` |
 | Marketing | `campaign:read`, `campaign:analytics`, `crm:read`, `crm:companies` |
 | Operations | `campaign:read` only — job/worker/system-health tools don't exist yet (see Deferred, below) |
 | Outreach | `crm:read`, `campaign:read` — read-only context; sending is not implemented for agents in any phase so far |
-| Social/Content Research | `research:analysis` only — `research_external_content` is honest about not being implemented, so this agent has nothing else to do until a real provider ships |
+| Social/Content Research | `research:web`, `research:social`, `research:knowledge` (Phase 9) — no `research:analysis`: this role researches external content, not this workspace's own CRM data |
 
 ## Deferred (intentionally not built this phase)
 
@@ -145,5 +155,5 @@ doesn't need for its stated objective.
   explicitly out of scope for this phase, and will route through
   `Approval` (Phase 2) when it exists.
 - SMS tools — no SMS channel exists in this codebase (`master` branch).
-- Real web/social content fetching for `research_external_content` — needs a
-  provider decision (and likely a paid API) before implementation.
+- ~~Real web/social content fetching for `research_external_content`~~ — done
+  in Phase 9 (`docs/research.md`); the stub tool was retired.

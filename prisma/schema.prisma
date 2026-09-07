@@ -17,8 +17,14 @@ model Workspace {
   senderName    String? // default "Krishna"
   senderCompany String? // default "Concilio"
   companyBlurb  String?  @db.Text // what we sell — fed to the AI writer
-  plan          String   @default("free")
-  createdAt     DateTime @default(now())
+
+  // ── Phase 10: commercial readiness (billing provider integration deliberately deferred — Section 12) ──
+  plan               String   @default("free") // free | pro | ... — a name into PLAN_LIMITS (src/lib/usage/plans.ts), never a price
+  subscriptionStatus String   @default("active") // active | past_due | canceled | trialing — state only, no payment provider wired up yet
+  quotaOverrides     Json?    // optional per-workspace override of PLAN_LIMITS, e.g. {"agent_task": 5000} — null means "use the plan's defaults"
+  featureFlags       Json     @default("{}") // per-workspace feature toggles, checked via src/lib/usage/plans.ts's hasFeature()
+
+  createdAt DateTime @default(now())
 
   members      Membership[]
   mailboxes    Mailbox[]
@@ -40,6 +46,10 @@ model Workspace {
   agentActivity    AgentActivityLog[]
 
   smsGateways SmsGateway[]
+
+  mediaAssets     MediaAsset[]
+  mediaAnalyses   MediaAnalysis[]
+  knowledgeChunks KnowledgeChunk[]
 }
 
 model User {
@@ -475,6 +485,12 @@ model Agent {
   allowedTools  Json          @default("[]") // tool names this agent may call — enforced at execution, not just here
   autonomyLevel AutonomyLevel @default(SuggestOnly) // never Autonomous by default
   status        String        @default("active") // active | paused | archived
+  // Reserved per-agent settings knob (Phase 2 extensibility, e.g. a future
+  // channel-specific override or rate tweak scoped to one agent rather than
+  // the whole workspace) — write/patch path exists (agents.ts), no reader
+  // yet. Same "add the field before the first concrete use" pattern as
+  // AgentTask.relatedRecordIds, which Phase 7's Command Center later did put
+  // to real use (dependency edges) — kept for the same reason, not reflexively.
   config        Json          @default("{}")
 
   createdAt DateTime @default(now())
@@ -534,6 +550,14 @@ model Approval {
   workspaceId       String
   actionType        String // e.g. send_email | send_whatsapp | send_sms | launch_campaign | delete_data
   proposedContent   Json
+  // A stable, actionType-independent answer to "which real records would
+  // this affect" — proposedContent's shape differs per actionType (an
+  // outreach send vs. a future launch_campaign/delete_data proposal), so a
+  // future generic approvals-list UI that wants to link out to affected
+  // records for ANY actionType needs one shape it can always read, not one
+  // parser per actionType. Populated by outreach.ts ([lead.id]) since Phase 6;
+  // no reader yet — today's Approvals UI reads proposedContent directly
+  // because outreach is still the only actionType family that exists.
   affectedRecordIds Json          @default("[]")
   status            ApprovalState @default(Pending)
   decidedBy         String? // a User id
@@ -590,7 +614,7 @@ model AgentActivityLog {
 model Job {
   id          String    @id @default(cuid())
   workspaceId String
-  type        String // send_message | generate_drafts | sync_wa_status
+  type        String // send_message | generate_drafts | sync_wa_status | run_agent_task | process_media
   payload     Json
   status      String    @default("pending") // pending | running | done | failed
   runAt       DateTime  @default(now())
@@ -602,4 +626,93 @@ model Job {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([status, runAt])
+}
+
+// ── Phase 9: web/social research ────────────────────────────────────────────
+
+/**
+ * A fetched-and-extracted public web page, keyed by normalized URL — not
+ * workspace-scoped (a public page's clean text is the same fact for every
+ * workspace, and re-fetching it per workspace would defeat the point of a
+ * cache). Only ever holds what WebFetchService actually retrieved from a
+ * public URL; never used for anything gated behind a login wall.
+ */
+model ResearchCache {
+  id              String   @id @default(cuid())
+  normalizedUrl   String   @unique
+  contentHash     String // sha256 of the raw fetched body — lets a caller detect "did this page actually change" without re-extracting
+  extraction      Json // { title, textContent, excerpt, byline, length }
+  fetchedAt       DateTime @default(now())
+  expiresAt       DateTime // TTL enforced in application code (cache.ts), not a DB job — see RESEARCH_CACHE_TTL_MS
+
+  @@index([expiresAt])
+}
+
+/**
+ * An uploaded file (a Reel/video, for now) pending or already processed by
+ * the media-analysis pipeline. `storagePath` is a key into the storage
+ * abstraction (src/lib/storage/), not a raw filesystem path — local-disk
+ * today, swappable for R2 without touching this model.
+ */
+model MediaAsset {
+  id          String   @id @default(cuid())
+  workspaceId String
+  uploadedBy  String // a User id
+  filename    String
+  mimeType    String
+  sizeBytes   Int
+  storagePath String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  analyses  MediaAnalysis[]
+
+  @@index([workspaceId])
+}
+
+/**
+ * One research/analysis run — either an uploaded MediaAsset or a social/web
+ * URL. Async by design (see docs/research.md "Async media processing"):
+ * the analyze_uploaded_media tool creates this row and enqueues a Job, then
+ * returns immediately; the worker's process_media handler fills in `result`.
+ */
+model MediaAnalysis {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  agentId      String?
+  taskId       String?
+  mediaAssetId String?
+  sourceUrl    String?
+  sourceType   String // upload | social_url | web_url
+  status       String   @default("queued") // queued | processing | completed | failed
+  result       Json? // structured findings once completed — schema documented in docs/research.md
+  error        String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mediaAsset MediaAsset? @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+}
+
+/**
+ * Explicit-only research storage (Section 10: "do not automatically put
+ * every web result into long-term memory") — plain chunked text, searched by
+ * Postgres full-text search (`search_knowledge` tool). No embeddings/vector
+ * index yet; see docs/research.md's "Known limitations" for the upgrade path
+ * once an embedding-capable provider is configured.
+ */
+model KnowledgeChunk {
+  id          String   @id @default(cuid())
+  workspaceId String
+  sourceUrl   String?
+  sourceType  String // web | social | media | manual
+  chunkIndex  Int
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, sourceUrl])
 }

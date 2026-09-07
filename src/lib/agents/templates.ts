@@ -36,8 +36,12 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     role: 'Research',
     name: 'Research',
     department: 'Research',
-    objective: 'Build a clear picture of a lead or company from the data already in the CRM.',
-    allowedTools: ['crm:read', 'crm:companies', 'research:analysis'],
+    objective: 'Build a clear picture of a lead or company from the data already in the CRM, plus real public web research.',
+    // research:web (Phase 9) grants web_search/fetch_web_page/analyze_web_content
+    // only — not research:social (Instagram/uploaded media), which is a
+    // materially different, higher-effort capability this role has no
+    // objective needing it. See docs/research.md's permission table.
+    allowedTools: ['crm:read', 'crm:companies', 'research:analysis', 'research:web', 'research:knowledge'],
     autonomyLevel: 'SuggestOnly',
   },
   {
@@ -84,10 +88,12 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     role: 'Social/Content Research',
     name: 'Content Research',
     department: 'Research',
-    objective: 'Analyze external content for adaptation ideas once a research provider is configured.',
-    // research_external_content is real, registered, and honest about not
-    // being implemented yet — this agent has nothing else to do until it is.
-    allowedTools: ['research:analysis'],
+    objective: 'Analyze public web pages, Instagram posts, and uploaded Reels/videos for business-model, audience, and adaptation-idea signals — real extraction and AI analysis, never fabricated.',
+    // Both web and social/media tools (Section 12: "Social/Content Research
+    // Agent may receive: social analysis, media analysis, web research").
+    // Deliberately no research:analysis — this role does lead/company
+    // synthesis for nobody; it researches EXTERNAL content, not the CRM.
+    allowedTools: ['research:web', 'research:social', 'research:knowledge'],
     autonomyLevel: 'SuggestOnly',
   },
 ];
