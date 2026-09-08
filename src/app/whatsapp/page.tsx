@@ -1,10 +1,13 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getSession, requireRole } from '@/lib/session';
-import { createInstance, connectInstance, connectionState, deleteInstance } from '@/lib/whatsapp/evolution';
+import { createInstance, connectInstance, connectionState, deleteInstance, humanizeEvolutionError } from '@/lib/whatsapp/evolution';
 import { encrypt } from '@/lib/crypto';
 import { appUrl } from '@/lib/env';
 import { waInstanceStatusMeta, pillClass } from '@/lib/ui/status';
+import { encodeErrorDisplay } from '@/lib/errors/display';
+import { ErrorDetail } from '@/components/ErrorDetail';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +40,7 @@ async function addInstance(formData: FormData) {
     await db.waInstance.create({
       data: {
         workspaceId: s.workspaceId, label, instanceName, number: number ?? null,
-        status, lastError: e instanceof Error ? e.message : String(e),
+        status, lastError: encodeErrorDisplay(humanizeEvolutionError(e)),
       },
     });
     redirect('/whatsapp');
@@ -53,6 +56,7 @@ async function addInstance(formData: FormData) {
   redirect('/whatsapp');
 }
 
+/** A real connection-state check — never assumed, only reported once Evolution API confirms it. */
 async function refresh(formData: FormData) {
   'use server';
   const s = await getSession();
@@ -67,7 +71,23 @@ async function refresh(formData: FormData) {
       data: { status: state === 'open' ? 'connected' : state === 'connecting' ? 'qr' : 'disconnected', lastError: null },
     });
   } catch (e) {
-    await db.waInstance.update({ where: { id }, data: { status: 'error', lastError: e instanceof Error ? e.message : String(e) } });
+    await db.waInstance.update({ where: { id }, data: { status: 'error', lastError: encodeErrorDisplay(humanizeEvolutionError(e)) } });
+  }
+  redirect('/whatsapp');
+}
+
+/** Regenerates a QR/pairing code for a disconnected or errored instance — a real Evolution API call, not a status guess. */
+async function reconnect(formData: FormData) {
+  'use server';
+  const s = await getSession();
+  if (!s) redirect('/login');
+  const id = String(formData.get('id'));
+  const wa = await db.waInstance.findFirstOrThrow({ where: { id, workspaceId: s.workspaceId } });
+  try {
+    await connectInstance(wa.instanceName);
+    await db.waInstance.update({ where: { id }, data: { status: 'qr', lastError: null } });
+  } catch (e) {
+    await db.waInstance.update({ where: { id }, data: { status: 'error', lastError: encodeErrorDisplay(humanizeEvolutionError(e)) } });
   }
   redirect('/whatsapp');
 }
@@ -99,10 +119,18 @@ export default async function WhatsAppPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">WhatsApp</h1>
+        <div className="flex items-baseline justify-between gap-4 flex-wrap">
+          <h1 className="text-2xl font-semibold">WhatsApp</h1>
+          <Link href="/help/whatsapp" className="text-sm text-accent whitespace-nowrap">How do I set this up? →</Link>
+        </div>
         <p className="text-sm text-muted mt-1">
-          Numbers connect through a self-hosted <a className="text-accent" href="https://github.com/EvolutionAPI/evolution-api">Evolution API</a> gateway.
-          Set <code className="text-slate-300">EVOLUTION_API_URL</code> and <code className="text-slate-300">EVOLUTION_API_KEY</code> first.
+          Numbers connect through a self-hosted <a className="text-accent" href="https://github.com/evolution-foundation/evolution-api">Evolution API</a> gateway —
+          a separate service you (or your admin) run, not something OutreachPilot hosts. Set{' '}
+          <code className="text-slate-300">EVOLUTION_API_URL</code> and <code className="text-slate-300">EVOLUTION_API_KEY</code> on the server first.
+        </p>
+        <p className="text-xs text-muted mt-2">
+          Three things have to be true, in order: the Evolution API service is reachable, the instance below exists on
+          it, and the phone has been paired via QR. The status pill only ever reflects Evolution API's own answer — never assumed.
         </p>
       </div>
 
@@ -116,7 +144,7 @@ export default async function WhatsAppPage() {
               </div>
               <span className={pillClass(waInstanceStatusMeta(wa.status).tone)}>{wa.status}</span>
             </div>
-            {wa.lastError && <div className="text-xs text-bad break-words">{wa.lastError}</div>}
+            <ErrorDetail raw={wa.lastError} />
             {qrs[i] && (
               <div>
                 <div className="text-xs text-muted mb-2">WhatsApp → Linked devices → Link a device</div>
@@ -125,8 +153,11 @@ export default async function WhatsAppPage() {
               </div>
             )}
             <div className="text-xs text-muted">Cap {wa.dailyLimit}/day · gap {wa.minGapSeconds}s +{wa.jitterSeconds}s jitter · sent today {wa.sentToday}</div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <form action={refresh}><input type="hidden" name="id" value={wa.id} /><button className="btn-sec text-xs">Refresh status</button></form>
+              {(wa.status === 'disconnected' || wa.status === 'error') && (
+                <form action={reconnect}><input type="hidden" name="id" value={wa.id} /><button className="btn-sec text-xs">Reconnect (new QR)</button></form>
+              )}
               <form action={remove}><input type="hidden" name="id" value={wa.id} /><button className="text-xs text-muted hover:text-bad px-2">Remove</button></form>
             </div>
           </div>

@@ -1,6 +1,8 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSession, requireRole } from '@/lib/session';
 import { smsGatewayStatusMeta, pillClass } from '@/lib/ui/status';
+import { ErrorDetail } from '@/components/ErrorDetail';
 import {
   createGateway, updateGateway, deleteGateway, disableGateway, checkGatewayConnection, listGateways, type SmsActor,
 } from '@/lib/sms/gateways';
@@ -68,9 +70,13 @@ export default async function SmsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">SMS</h1>
+        <div className="flex items-baseline justify-between gap-4 flex-wrap">
+          <h1 className="text-2xl font-semibold">SMS</h1>
+          <Link href="/help/sms" className="text-sm text-accent whitespace-nowrap">How do I set this up? →</Link>
+        </div>
         <p className="text-sm text-muted mt-1">
           Connects through <a className="text-accent" href="https://httpsms.com">httpSMS</a> — the only provider implemented so far.
+          It turns your own Android phone and SIM into the sending device; OutreachPilot never sends SMS directly.
           Credentials are encrypted with AES-256-GCM before they touch the database.
         </p>
       </div>
@@ -85,7 +91,7 @@ export default async function SmsPage() {
               </div>
               <span className={pillClass(smsGatewayStatusMeta(gw.status).tone)}>{gw.status}</span>
             </div>
-            {gw.lastError && <div className="text-xs text-bad break-words">{gw.lastError}</div>}
+            <ErrorDetail raw={gw.lastError} />
             <div className="text-xs text-muted">Cap {gw.dailyLimit}/day · gap {gw.minGapSeconds}s +{gw.jitterSeconds}s jitter · sent today {gw.sentToday}</div>
             <div className="flex gap-2 flex-wrap">
               <form action={test}><input type="hidden" name="id" value={gw.id} /><button className="btn-sec text-xs">Test connection</button></form>

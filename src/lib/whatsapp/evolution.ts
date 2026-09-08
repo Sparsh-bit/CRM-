@@ -6,15 +6,80 @@
 
 const base = () => (process.env.EVOLUTION_API_URL || 'http://localhost:8080').replace(/\/+$/, '');
 const key = () => process.env.EVOLUTION_API_KEY || '';
+const TIMEOUT_MS = () => Number(process.env.EVOLUTION_TIMEOUT_MS ?? 15_000);
+
+export type EvolutionErrorKind =
+  | 'unavailable'    // DNS/refused/timeout — nothing is listening at EVOLUTION_API_URL
+  | 'wrong_service'  // got HTML back, not JSON — URL points at a webpage, not the API
+  | 'unauthorized'   // 401 — bad EVOLUTION_API_KEY / instance token
+  | 'not_found'      // 404 — instance name doesn't exist on this server
+  | 'server_error'   // 5xx — Evolution API itself is unhealthy
+  | 'bad_request'    // other 4xx
+  | 'malformed';     // 2xx but the body wasn't valid JSON
+
+export class EvolutionApiError extends Error {
+  constructor(message: string, public readonly kind: EvolutionErrorKind, public readonly detail: string) {
+    super(message);
+  }
+}
 
 async function call<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
-  const res = await fetch(`${base()}${path}`, {
-    ...init,
-    headers: { 'content-type': 'application/json', apikey: token || key(), ...(init.headers ?? {}) },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS());
+  let res: Response;
+  try {
+    res = await fetch(`${base()}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: { 'content-type': 'application/json', apikey: token || key(), ...(init.headers ?? {}) },
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    const detail = e instanceof Error ? e.message : String(e);
+    if (controller.signal.aborted) {
+      throw new EvolutionApiError(`Evolution API at ${base()} did not respond within ${TIMEOUT_MS()}ms.`, 'unavailable', detail);
+    }
+    throw new EvolutionApiError(`Could not reach the Evolution API at ${base()}. Check EVOLUTION_API_URL and that the service is running.`, 'unavailable', detail);
+  }
+  clearTimeout(timer);
+
   const text = await res.text();
-  if (!res.ok) throw new Error(`Evolution ${res.status} ${path}: ${text.slice(0, 400)}`);
-  return (text ? JSON.parse(text) : {}) as T;
+  const contentType = res.headers.get('content-type') ?? '';
+  const looksLikeHtml = contentType.includes('text/html') || /^\s*<(!doctype|html)/i.test(text);
+  if (looksLikeHtml) {
+    throw new EvolutionApiError(
+      'Evolution API URL appears to point to the wrong service (it returned a web page, not JSON). Double-check EVOLUTION_API_URL.',
+      'wrong_service',
+      text.slice(0, 2000),
+    );
+  }
+
+  if (!res.ok) {
+    const kind: EvolutionErrorKind =
+      res.status === 401 ? 'unauthorized' :
+      res.status === 404 ? 'not_found' :
+      res.status >= 500 ? 'server_error' : 'bad_request';
+    const messages: Record<EvolutionErrorKind, string> = {
+      unauthorized: 'Evolution API rejected the request — the API key is missing or invalid.',
+      not_found: 'Evolution API returned 404 — this instance does not exist on that server (it may have been deleted, or the instance name is wrong).',
+      server_error: `Evolution API returned a server error (${res.status}) — the service itself is unhealthy right now.`,
+      bad_request: `Evolution API rejected the request (${res.status}).`,
+      unavailable: 'Evolution API is unavailable.', wrong_service: 'Evolution API URL appears to point to the wrong service.', malformed: 'Evolution API returned an unreadable response.',
+    };
+    throw new EvolutionApiError(messages[kind], kind, `${res.status} ${path}: ${text.slice(0, 2000)}`);
+  }
+
+  try {
+    return (text ? JSON.parse(text) : {}) as T;
+  } catch {
+    throw new EvolutionApiError('Evolution API returned a response that could not be parsed as JSON.', 'malformed', text.slice(0, 2000));
+  }
+}
+
+/** Human message + expandable technical detail — see src/lib/errors/display.ts. Never includes the API key. */
+export function humanizeEvolutionError(e: unknown): { message: string; detail: string } {
+  if (e instanceof EvolutionApiError) return { message: e.message, detail: e.detail };
+  return { message: e instanceof Error ? e.message : String(e), detail: '' };
 }
 
 export type CreateInstanceResult = {

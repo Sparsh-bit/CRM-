@@ -1,9 +1,13 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { getSession, requireRole } from '@/lib/session';
 import { encrypt } from '@/lib/crypto';
 import { effectiveDailyLimit, localDay } from '@/lib/scheduler';
 import { mailboxStatusMeta, pillClass } from '@/lib/ui/status';
+import { verifyMailbox, humanizeEmailError } from '@/lib/email/senders';
+import { encodeErrorDisplay } from '@/lib/errors/display';
+import { ErrorDetail } from '@/components/ErrorDetail';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,6 +58,33 @@ async function toggle(formData: FormData) {
   redirect('/mailboxes');
 }
 
+/**
+ * A real connection check — no email is sent. Never flips a deliberately
+ * paused mailbox back to active on its own; a pause is an admin decision,
+ * a test result is just information about whether credentials still work.
+ */
+async function test(formData: FormData) {
+  'use server';
+  const s = await getSession();
+  if (!s) redirect('/login');
+  const id = String(formData.get('id'));
+  const mb = await db.mailbox.findFirstOrThrow({ where: { id, workspaceId: s.workspaceId } });
+  try {
+    await verifyMailbox(mb);
+    await db.mailbox.update({
+      where: { id },
+      data: { lastError: null, ...(mb.status === 'paused' ? {} : { status: 'active' }) },
+    });
+  } catch (e) {
+    const h = humanizeEmailError(e, mb.provider);
+    await db.mailbox.update({
+      where: { id },
+      data: { lastError: encodeErrorDisplay(h), ...(mb.status === 'paused' ? {} : { status: 'error' }) },
+    });
+  }
+  redirect('/mailboxes');
+}
+
 export default async function Mailboxes() {
   const s = await getSession();
   if (!s) redirect('/login');
@@ -67,13 +98,43 @@ export default async function Mailboxes() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">Mailboxes</h1>
+        <div className="flex items-baseline justify-between gap-4 flex-wrap">
+          <h1 className="text-2xl font-semibold">Mailboxes</h1>
+          <Link href="/help/email" className="text-sm text-accent whitespace-nowrap">How do I set this up? →</Link>
+        </div>
         <p className="text-sm text-muted mt-1">
           Sends rotate across active mailboxes, least-recently-used first. Today: {totalToday} of {capacity} available sends.
         </p>
       </div>
 
-      <div className="card p-0 overflow-x-auto">
+      {/* Mobile: a status/error/action row buried in an off-screen table column has no
+          visual hint it's reachable by scroll — a stacked card surfaces it directly instead. */}
+      <div className="md:hidden space-y-3">
+        {boxes.map((mb) => (
+          <div key={mb.id} className="card space-y-2">
+            <div className="flex justify-between items-start gap-2">
+              <div>
+                <div className="font-medium">{mb.label}</div>
+                <div className="text-xs text-muted">{mb.fromName} &lt;{mb.fromEmail}&gt;</div>
+              </div>
+              <span className={pillClass(mailboxStatusMeta(mb.status).tone)}>{mb.status}</span>
+            </div>
+            <ErrorDetail raw={mb.lastError} />
+            <div className="text-xs text-muted">
+              {mb.provider} · {mb.sentTodayDate === today ? mb.sentToday : 0} sent today · cap {effectiveDailyLimit({ ...mb, sentToday: 0, sentTodayDate: null } as never)}/{mb.dailyLimit} · gap {mb.minGapSeconds}s+{mb.jitterSeconds}s
+            </div>
+            <div className="flex gap-3">
+              <form action={test}><input type="hidden" name="id" value={mb.id} /><button className="text-xs text-accent hover:opacity-80">Test connection</button></form>
+              <form action={toggle}><input type="hidden" name="id" value={mb.id} />
+                <button className="text-xs text-muted hover:text-slate-200">{mb.status === 'active' ? 'Pause' : 'Resume'}</button>
+              </form>
+            </div>
+          </div>
+        ))}
+        {!boxes.length && <div className="text-sm text-muted">No mailboxes yet. Add one below.</div>}
+      </div>
+
+      <div className="hidden md:block card p-0 overflow-x-auto">
         <table className="w-full">
           <thead className="bg-ink"><tr>
             {['Mailbox', 'Provider', 'Today', 'Cap (warmup)', 'Gap', 'Status', ''].map((h) => <th key={h} className="th">{h}</th>)}
@@ -88,12 +149,15 @@ export default async function Mailboxes() {
                 <td className="td text-muted">{mb.minGapSeconds}s +{mb.jitterSeconds}s</td>
                 <td className="td">
                   <span className={pillClass(mailboxStatusMeta(mb.status).tone)}>{mb.status}</span>
-                  {mb.lastError && <div className="text-xs text-bad mt-1 max-w-xs truncate">{mb.lastError}</div>}
+                  <div className="mt-1 max-w-xs"><ErrorDetail raw={mb.lastError} /></div>
                 </td>
                 <td className="td">
-                  <form action={toggle}><input type="hidden" name="id" value={mb.id} />
-                    <button className="text-xs text-muted hover:text-slate-200">{mb.status === 'active' ? 'Pause' : 'Resume'}</button>
-                  </form>
+                  <div className="flex flex-col gap-1.5 items-start">
+                    <form action={test}><input type="hidden" name="id" value={mb.id} /><button className="text-xs text-accent hover:opacity-80">Test connection</button></form>
+                    <form action={toggle}><input type="hidden" name="id" value={mb.id} />
+                      <button className="text-xs text-muted hover:text-slate-200">{mb.status === 'active' ? 'Pause' : 'Resume'}</button>
+                    </form>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -120,15 +184,20 @@ export default async function Mailboxes() {
           </div>
         </div>
 
-        <details className="rounded-lg border border-line p-4">
+        <details className="rounded-lg border border-line p-4" open>
           <summary className="text-sm cursor-pointer">SMTP credentials</summary>
           <div className="grid md:grid-cols-4 gap-4 mt-4">
             <div><label className="label">Host</label><input className="input" name="smtpHost" placeholder="smtp.gmail.com" /></div>
             <div><label className="label">Port</label><input className="input" name="smtpPort" type="number" defaultValue={465} /></div>
-            <div><label className="label">Username</label><input className="input" name="smtpUser" /></div>
+            <div><label className="label">Username</label><input className="input" name="smtpUser" placeholder="you@gmail.com" /></div>
             <div><label className="label">Password / app password</label><input className="input" name="smtpPass" type="password" /></div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="smtpSecure" defaultChecked /> TLS</label>
           </div>
+          <p className="text-xs text-warn mt-3">
+            Use a Google App Password, not your normal Google password — Gmail and Google Workspace both reject
+            SMTP logins with a regular account password once 2-Step Verification is on.{' '}
+            <Link href="/help/email/gmail" className="text-accent">How do I create one? →</Link>
+          </p>
         </details>
 
         <details className="rounded-lg border border-line p-4">
