@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { campaignStatusMeta, pillClass } from '@/lib/ui/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,7 +79,7 @@ export default async function Campaigns({ searchParams }: { searchParams: Promis
                 <td className="td text-muted">{c.channel}</td>
                 <td className="td text-muted">{c.aiEnabled ? 'AI writer' : 'template'}</td>
                 <td className="td">{c._count.messages}</td>
-                <td className="td"><span className="pill bg-line text-slate-300">{c.status}</span></td>
+                <td className="td"><span className={pillClass(campaignStatusMeta(c.status).tone)}>{c.status}</span></td>
               </tr>
             ))}
             {!campaigns.length && <tr><td className="td text-muted" colSpan={5}>No campaigns yet.</td></tr>}

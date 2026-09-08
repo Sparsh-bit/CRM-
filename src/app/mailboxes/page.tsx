@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { getSession, requireRole } from '@/lib/session';
 import { encrypt } from '@/lib/crypto';
 import { effectiveDailyLimit, localDay } from '@/lib/scheduler';
+import { mailboxStatusMeta, pillClass } from '@/lib/ui/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,7 +87,7 @@ export default async function Mailboxes() {
                 <td className="td">{effectiveDailyLimit({ ...mb, sentToday: 0, sentTodayDate: null } as never)} / {mb.dailyLimit}</td>
                 <td className="td text-muted">{mb.minGapSeconds}s +{mb.jitterSeconds}s</td>
                 <td className="td">
-                  <span className={`pill ${mb.status === 'active' ? 'bg-good/20 text-good' : mb.status === 'error' ? 'bg-bad/20 text-bad' : 'bg-line text-muted'}`}>{mb.status}</span>
+                  <span className={pillClass(mailboxStatusMeta(mb.status).tone)}>{mb.status}</span>
                   {mb.lastError && <div className="text-xs text-bad mt-1 max-w-xs truncate">{mb.lastError}</div>}
                 </td>
                 <td className="td">

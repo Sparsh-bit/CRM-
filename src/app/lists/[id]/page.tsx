@@ -6,6 +6,7 @@ import { getSession } from '@/lib/session';
 import { parseWorkbook } from '@/lib/import/parse';
 import { importRows } from '@/lib/import/ingest';
 import { CANONICAL } from '@/lib/import/mapping';
+import { leadStatusMeta, pillClass } from '@/lib/ui/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -151,9 +152,10 @@ export default async function ListDetail({ params }: { params: Promise<{ id: str
                 <td className="td text-muted">{l.industry ?? '—'}</td>
                 <td className="td text-muted">{l.city ?? '—'}</td>
                 <td className="td text-muted">{l.tier ?? '—'}</td>
-                <td className="td">{l.status}</td>
+                <td className="td"><span className={pillClass(leadStatusMeta(l.status).tone)}>{l.status}</span></td>
               </tr>
             ))}
+            {!leads.length && <tr><td className="td text-muted" colSpan={9}>No leads in this list yet.</td></tr>}
           </tbody>
         </table>
       </div>

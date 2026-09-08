@@ -4,6 +4,7 @@ import { getSession, requireRole } from '@/lib/session';
 import { createInstance, connectInstance, connectionState, deleteInstance } from '@/lib/whatsapp/evolution';
 import { encrypt } from '@/lib/crypto';
 import { appUrl } from '@/lib/env';
+import { waInstanceStatusMeta, pillClass } from '@/lib/ui/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -113,7 +114,7 @@ export default async function WhatsAppPage() {
                 <div className="font-medium">{wa.label}</div>
                 <div className="text-xs text-muted">{wa.instanceName}{wa.number ? ` · +${wa.number}` : ''}</div>
               </div>
-              <span className={`pill ${wa.status === 'connected' ? 'bg-good/20 text-good' : wa.status === 'error' ? 'bg-bad/20 text-bad' : 'bg-warn/20 text-warn'}`}>{wa.status}</span>
+              <span className={pillClass(waInstanceStatusMeta(wa.status).tone)}>{wa.status}</span>
             </div>
             {wa.lastError && <div className="text-xs text-bad break-words">{wa.lastError}</div>}
             {qrs[i] && (

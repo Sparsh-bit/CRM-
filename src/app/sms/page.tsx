@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSession, requireRole } from '@/lib/session';
+import { smsGatewayStatusMeta, pillClass } from '@/lib/ui/status';
 import {
   createGateway, updateGateway, deleteGateway, disableGateway, checkGatewayConnection, listGateways, type SmsActor,
 } from '@/lib/sms/gateways';
@@ -59,13 +60,6 @@ async function remove(formData: FormData) {
   redirect('/sms');
 }
 
-const STATUS_TONE: Record<string, string> = {
-  connected: 'bg-good/20 text-good',
-  error: 'bg-bad/20 text-bad',
-  disconnected: 'bg-line text-muted',
-  not_configured: 'bg-warn/20 text-warn',
-};
-
 export default async function SmsPage() {
   const s = await getSession();
   if (!s) redirect('/login');
@@ -89,7 +83,7 @@ export default async function SmsPage() {
                 <div className="font-medium">{gw.label}</div>
                 <div className="text-xs text-muted">{gw.phoneNumber} · {gw.provider}</div>
               </div>
-              <span className={`pill ${STATUS_TONE[gw.status] ?? 'bg-line text-muted'}`}>{gw.status}</span>
+              <span className={pillClass(smsGatewayStatusMeta(gw.status).tone)}>{gw.status}</span>
             </div>
             {gw.lastError && <div className="text-xs text-bad break-words">{gw.lastError}</div>}
             <div className="text-xs text-muted">Cap {gw.dailyLimit}/day · gap {gw.minGapSeconds}s +{gw.jitterSeconds}s jitter · sent today {gw.sentToday}</div>

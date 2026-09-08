@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { enqueue } from '@/lib/queue';
 import { preflight, buildQueue, leadMergeContext } from '@/lib/campaign';
 import { render, extractTags } from '@/lib/template';
+import { campaignStatusMeta, pillClass } from '@/lib/ui/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -157,7 +158,7 @@ export default async function CampaignDetail({
           <div className="text-sm text-muted mt-1">
             {c.channel} · {c.aiEnabled ? 'AI writer' : 'template'} · list{' '}
             {c.list ? <Link className="text-accent" href={`/lists/${c.list.id}`}>{c.list.name}</Link> : '—'} ·{' '}
-            <span className="pill bg-line text-slate-300">{c.status}</span>
+            <span className={pillClass(campaignStatusMeta(c.status).tone)}>{c.status}</span>
           </div>
         </div>
         <div className="flex gap-2">
