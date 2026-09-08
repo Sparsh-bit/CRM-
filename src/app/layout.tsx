@@ -9,7 +9,7 @@ export const metadata = { title: 'OutreachPilot', description: 'Bulk email + Wha
 
 const NAV = [
   ['/', 'Dashboard'], ['/onboarding', 'Get Started'], ['/lists', 'Lists'], ['/campaigns', 'Campaigns'], ['/workforce', 'Workforce'],
-  ['/mailboxes', 'Mailboxes'], ['/whatsapp', 'WhatsApp'], ['/sms', 'SMS'], ['/usage', 'Usage'], ['/settings', 'Settings'],
+  ['/mailboxes', 'Mailboxes'], ['/whatsapp', 'WhatsApp'], ['/sms', 'SMS'], ['/usage', 'Usage'], ['/help', 'Help'], ['/settings', 'Settings'],
 ];
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
