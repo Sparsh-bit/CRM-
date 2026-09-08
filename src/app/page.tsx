@@ -23,31 +23,55 @@ export default async function Dashboard() {
   ]);
 
   const pct = (n: number) => (sent ? Math.round((n / sent) * 100) : 0);
-  const stats: [string, string | number, string?][] = [
-    ['Leads', leads], ['Campaigns', campaigns], ['Sent', sent], ['Queued', queued],
-    ['Opened', `${opened}`, `${pct(opened)}%`], ['Clicked', `${clicked}`, `${pct(clicked)}%`],
-    ['Replied', `${replied}`, `${pct(replied)}%`],
-    ['Channels', `${mailboxes} inbox · ${wa} WA`],
+  const pipeline: [string, number][] = [['Leads', leads], ['Campaigns', campaigns]];
+  const engagement: [string, number, string][] = [
+    ['Sent', sent, ''], ['Queued', queued, ''],
+    ['Opened', opened, `${pct(opened)}% of sent`],
+    ['Clicked', clicked, `${pct(clicked)}% of sent`],
+    ['Replied', replied, `${pct(replied)}% of sent`],
   ];
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <p className="text-sm text-muted mt-1">Real-time counts from your workspace.</p>
+        </div>
         <div className="flex gap-2">
           <Link href="/lists" className="btn-sec">Import a list</Link>
           <Link href="/campaigns" className="btn">New campaign</Link>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {stats.map(([label, value, sub]) => (
+      <div className="grid sm:grid-cols-2 gap-4">
+        {pipeline.map(([label, value]) => (
           <div key={label} className="card">
             <div className="text-xs text-muted">{label}</div>
-            <div className="text-2xl font-semibold mt-1">{value}</div>
-            {sub && <div className="text-xs text-muted mt-0.5">{sub} of sent</div>}
+            <div className="text-3xl font-semibold mt-1">{value}</div>
           </div>
         ))}
+      </div>
+
+      <div className="space-y-3">
+        <div className="text-xs uppercase tracking-wide text-muted font-semibold">Engagement</div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {engagement.map(([label, value, sub]) => (
+            <div key={label} className="card">
+              <div className="text-xs text-muted">{label}</div>
+              <div className="text-2xl font-semibold mt-1">{value}</div>
+              {sub && <div className="text-xs text-muted mt-0.5">{sub}</div>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-medium">Channels connected</div>
+          <div className="text-xs text-muted mt-0.5">{mailboxes} mailbox{mailboxes === 1 ? '' : 'es'} active, {wa} WhatsApp instance{wa === 1 ? '' : 's'} connected.</div>
+        </div>
+        <Link href="/mailboxes" className="btn-sec text-xs shrink-0">Manage channels</Link>
       </div>
 
       {sent === 0 && (

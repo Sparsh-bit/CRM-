@@ -35,3 +35,15 @@ export const leadStatusMeta = metaOf({
   new: 'muted', queued: 'accent', contacted: 'accent', replied: 'good',
   bounced: 'bad', unsubscribed: 'bad', invalid: 'bad',
 });
+
+// StepStatus from src/lib/onboarding/status.ts — kept as an explicit Record
+// (not metaOf's fallback form) so a new StepStatus value fails to compile
+// here instead of silently rendering unlabeled.
+export type OnboardingStepStatus = 'not_configured' | 'configured' | 'connected' | 'error' | 'needs_attention';
+export const onboardingStepMeta: Record<OnboardingStepStatus, { label: string; tone: Tone }> = {
+  not_configured: { label: 'Not configured', tone: 'muted' },
+  configured: { label: 'Configured', tone: 'good' },
+  connected: { label: 'Connected', tone: 'good' },
+  error: { label: 'Error', tone: 'bad' },
+  needs_attention: { label: 'Needs attention', tone: 'warn' },
+};

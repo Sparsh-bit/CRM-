@@ -2,10 +2,11 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { db } from '@/lib/db';
 import { getSession, requireRole } from '@/lib/session';
-import { getOnboardingStatus, type StepStatus } from '@/lib/onboarding/status';
+import { getOnboardingStatus } from '@/lib/onboarding/status';
 import { AGENT_TEMPLATES } from '@/lib/agents/templates';
 import { createAgent, type AgentActor } from '@/lib/agents/agents';
 import { createTask } from '@/lib/agents/tasks';
+import { onboardingStepMeta, pillClass } from '@/lib/ui/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,14 +51,6 @@ async function runSampleTask() {
   redirect('/workforce/tasks');
 }
 
-const STATUS_META: Record<StepStatus, { label: string; tone: string }> = {
-  not_configured: { label: 'Not configured', tone: 'bg-line text-muted' },
-  configured: { label: 'Configured', tone: 'bg-good/20 text-good' },
-  connected: { label: 'Connected', tone: 'bg-good/20 text-good' },
-  error: { label: 'Error', tone: 'bg-bad/20 text-bad' },
-  needs_attention: { label: 'Needs attention', tone: 'bg-warn/20 text-warn' },
-};
-
 export default async function OnboardingPage() {
   const s = await getSession();
   if (!s) redirect('/login');
@@ -83,7 +76,7 @@ export default async function OnboardingPage() {
               <div className="text-xs text-muted mt-0.5">{step.detail}</div>
             </div>
             <div className="flex items-center gap-3 shrink-0">
-              <span className={`pill ${STATUS_META[step.status].tone}`}>{STATUS_META[step.status].label}</span>
+              <span className={pillClass(onboardingStepMeta[step.status].tone)}>{onboardingStepMeta[step.status].label}</span>
               {step.id !== 'complete' && step.id !== 'agents' && step.id !== 'sample_task' && (
                 <Link href={step.href} className="text-xs text-accent hover:underline">Open</Link>
               )}
