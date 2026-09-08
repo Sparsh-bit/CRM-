@@ -26,7 +26,7 @@ AUTH_SECRET="change-me-to-a-long-random-string"
 # --- AI (Groq first, per Section 13 — one provider key is enough) ---
 AI_PROVIDER_CHAIN="groq,anthropic,openai"
 GROQ_API_KEY=""
-GROQ_MODEL="llama-3.3-70b-versatile"
+GROQ_MODEL="qwen/qwen3.8-27b"
 GROQ_WHISPER_MODEL="whisper-large-v3-turbo"
 ANTHROPIC_API_KEY=""
 ANTHROPIC_MODEL="claude-sonnet-4-5"

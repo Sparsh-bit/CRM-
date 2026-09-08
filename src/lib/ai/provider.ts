@@ -94,7 +94,7 @@ async function callProvider(provider: string, a: CompleteArgs): Promise<Provider
   if (provider === 'groq') return openAiCompatible(a, {
     url: 'https://api.groq.com/openai/v1/chat/completions',
     key: process.env.GROQ_API_KEY, keyName: 'GROQ_API_KEY',
-    defaultModel: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+    defaultModel: process.env.GROQ_MODEL || 'qwen/qwen3.8-27b',
   });
   if (provider === 'openai') return openAiCompatible(a, {
     url: 'https://api.openai.com/v1/chat/completions',
