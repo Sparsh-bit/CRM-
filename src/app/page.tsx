@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function Dashboard() {
   const s = await getSession();
-  if (!s) redirect('/login');
+  if (!s) redirect('/landing');
   const w = s.workspaceId;
 
   const [leads, campaigns, sent, opened, clicked, replied, queued, mailboxes, wa] = await Promise.all([
