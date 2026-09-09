@@ -6,7 +6,13 @@ import { getOnboardingStatus } from '@/lib/onboarding/status';
 import { AGENT_TEMPLATES } from '@/lib/agents/templates';
 import { createAgent, type AgentActor } from '@/lib/agents/agents';
 import { createTask } from '@/lib/agents/tasks';
-import { onboardingStepMeta, pillClass } from '@/lib/ui/status';
+import { onboardingStepMeta } from '@/lib/ui/status';
+import { AUTONOMY_META } from '@/app/workforce/_lib/status';
+import { cx } from '@/lib/ui/cx';
+import { PageHeader } from '@/components/PageHeader';
+import { Card } from '@/components/Card';
+import { Badge } from '@/components/Badge';
+import { Button } from '@/components/Button';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +26,31 @@ export const dynamic = 'force-dynamic';
  * /workforce/agents, which already has its own create/edit flow — this page
  * only offers the fast "use the built-in defaults" path Section 3 asks for.
  */
+
+// Presentation-only — helps someone pick a template. Never read by
+// createBuiltins() below, which creates agents straight from AGENT_TEMPLATES.
+const RECOMMENDED_USE: Record<string, string> = {
+  'CEO / Strategy': 'A daily pulse on pipeline health without digging through reports.',
+  Research: 'A full picture of one lead or company before a call.',
+  Sales: 'Triage a large lead list into who to contact first.',
+  Marketing: 'Compare campaign performance and see who is actually engaging.',
+  Operations: 'A lightweight check on campaign state across the workspace.',
+  Outreach: 'Draft outreach at scale — every send still waits for your approval.',
+  'Social/Content Research': "Scout a lead's public presence before Research or Outreach picks it up.",
+};
+
+// Which steps get a real "go do this" link, and its label — steps whose
+// action lives further down this same page (agents, sample task) or that
+// have no destination of their own (ai, a deployment env var) get none.
+const STEP_LINK: Partial<Record<string, string>> = {
+  workspace: 'Open settings',
+  profile: 'Edit profile',
+  email: 'Connect Email',
+  whatsapp: 'Connect WhatsApp',
+  sms: 'Set up SMS',
+  complete: 'Go to Workforce',
+};
+
 async function createBuiltins(formData: FormData) {
   'use server';
   const s = await getSession();
@@ -61,68 +92,93 @@ export default async function OnboardingPage() {
 
   return (
     <div className="max-w-3xl space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold">Get started</h1>
-        <p className="text-sm text-muted mt-1">
-          {complete ? 'Every required step is set up — this checklist stays here if you want to add more channels or employees.' : 'A real, live checklist — each status below is checked against the database right now, not a saved "done" flag.'}
-        </p>
-      </div>
+      <PageHeader
+        title="Get started"
+        description={
+          complete
+            ? 'Every required step is set up — this checklist stays here if you want to add more channels or employees.'
+            : 'A live checklist — each status below is checked against your workspace right now, never a saved "done" flag.'
+        }
+      />
 
-      <div className="card p-0 overflow-hidden">
+      <Card className="p-0 overflow-hidden divide-y divide-line">
         {steps.map((step) => (
-          <div key={step.id} className="flex items-center justify-between gap-4 px-5 py-4 border-b border-line last:border-0">
-            <div>
-              <div className="text-sm font-medium">{step.label}{step.optional && <span className="text-xs text-muted ml-2">(optional)</span>}</div>
-              <div className="text-xs text-muted mt-0.5">{step.detail}</div>
+          <div key={step.id} className="flex items-start justify-between gap-4 px-5 py-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="card-heading text-sm">{step.label}</span>
+                {step.optional && <span className="text-meta">Optional</span>}
+              </div>
+              <p className="text-secondary mt-0.5">{step.detail}</p>
+              <p className="text-meta mt-1">{step.why}</p>
             </div>
             <div className="flex items-center gap-3 shrink-0">
-              <span className={pillClass(onboardingStepMeta[step.status].tone)}>{onboardingStepMeta[step.status].label}</span>
-              {step.id !== 'complete' && step.id !== 'agents' && step.id !== 'sample_task' && (
-                <Link href={step.href} className="text-xs text-accent hover:underline">Open</Link>
+              <Badge {...onboardingStepMeta[step.status]} />
+              {STEP_LINK[step.id] && (
+                <Link href={step.href} className="text-accent hover:underline text-sm">{STEP_LINK[step.id]}</Link>
               )}
             </div>
           </div>
         ))}
-      </div>
+      </Card>
 
-      <div className="card space-y-4">
+      <Card className="space-y-4">
         <div>
-          <div className="font-medium">Create AI employees</div>
-          <p className="text-xs text-muted mt-1">
-            Built-in templates, least-privilege by default (never autonomous messaging — every send still requires approval).
+          <h2 className="card-heading">Create AI employees</h2>
+          <p className="text-secondary mt-1">
+            Built-in templates, least-privilege by default — none of them can send a message without your approval.
             Full customization (objective, instructions, tools, autonomy) is available anytime at{' '}
             <Link href="/workforce/agents" className="text-accent hover:underline">Workforce → Agents</Link>.
           </p>
         </div>
-        <form action={createBuiltins} className="space-y-3">
-          {AGENT_TEMPLATES.map((t) => (
-            <label key={t.role} className="flex items-start gap-3 text-sm">
-              <input type="checkbox" name="role" value={t.role} defaultChecked={!existingRoles.has(t.role)} disabled={existingRoles.has(t.role)} className="mt-1" />
-              <span>
-                <span className="font-medium">{t.name}</span>{existingRoles.has(t.role) && <span className="text-xs text-good ml-2">already created</span>}
-                <span className="block text-xs text-muted">{t.objective}</span>
-              </span>
-            </label>
-          ))}
-          <button className="btn">Create selected</button>
+        <form action={createBuiltins} className="space-y-4">
+          <div className="grid sm:grid-cols-2 gap-3">
+            {AGENT_TEMPLATES.map((t) => {
+              const already = existingRoles.has(t.role);
+              return (
+                <label
+                  key={t.role}
+                  className={cx(
+                    'flex flex-col gap-2 rounded-lg border border-line p-4 min-w-0',
+                    already ? 'opacity-60' : 'hover:border-accent/50 cursor-pointer transition-colors',
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" name="role" value={t.role} defaultChecked={!already} disabled={already} />
+                      <span className="font-medium text-sm text-slate-100">{t.name}</span>
+                    </div>
+                    {already && <span className="text-meta text-good shrink-0">Already created</span>}
+                  </div>
+                  <p className="text-secondary">{t.objective}</p>
+                  <p className="text-meta">{RECOMMENDED_USE[t.role]}</p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge {...AUTONOMY_META[t.autonomyLevel]} />
+                    {t.allowedTools.map((tool) => <Badge key={tool} label={tool} tone="muted" />)}
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          <Button type="submit">Create selected</Button>
         </form>
-      </div>
+      </Card>
 
-      <div className="card space-y-3">
-        <div className="font-medium">Optional: run a real sample task</div>
+      <Card className="space-y-3">
+        <h2 className="card-heading">Optional: run a real sample task</h2>
         {researchAgentExists && hasLeads ? (
           <>
-            <p className="text-xs text-muted">Runs a real, read-only summarize_lead task on your most recently imported lead through the actual AgentRuntime/Job/worker pipeline.</p>
-            <form action={runSampleTask}><button className="btn-sec">Run sample task</button></form>
+            <p className="text-secondary">Runs a real, read-only research task on your most recently imported lead through the actual Workforce pipeline — nothing here is a simulated demo.</p>
+            <form action={runSampleTask}><Button type="submit" variant="secondary">Run sample task</Button></form>
           </>
         ) : (
-          <p className="text-xs text-muted">
+          <p className="text-secondary">
             {!researchAgentExists ? 'Create the Research employee above first. ' : ''}
             {!hasLeads ? 'Import at least one lead from Lists first. ' : ''}
             A sample task needs both — never faked with placeholder data.
           </p>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

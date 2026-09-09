@@ -15,6 +15,8 @@ export type OnboardingStep = {
   label: string;
   status: StepStatus;
   detail: string;
+  /** Presentation-only: why this step matters, shown alongside its live status — never used in the status computation itself. */
+  why: string;
   href: string;
   optional?: boolean;
 };
@@ -62,15 +64,15 @@ export async function getOnboardingStatus(workspaceId: string): Promise<Onboardi
     : 'not_configured';
 
   const steps: OnboardingStep[] = [
-    { id: 'workspace', label: 'Workspace setup', status: 'connected', detail: `"${ws.name}" is created and ready.`, href: '/settings' },
-    { id: 'profile', label: 'Profile / company information', status: profileConfigured ? 'configured' : 'needs_attention', detail: profileConfigured ? `Sending as ${ws.senderName} at ${ws.senderCompany}.` : 'Set a sender name and company — the AI writer and every outgoing message use this.', href: '/settings' },
-    { id: 'email', label: 'Connect Email', status: emailStatus, detail: mailboxes.length ? `${mailboxes.length} mailbox(es), ${mailboxes.filter((m) => m.status === 'active').length} active.` : 'No mailbox connected yet.', href: '/mailboxes' },
-    { id: 'whatsapp', label: 'Connect WhatsApp', status: waStatus, detail: waInstances.length ? `${waInstances.length} number(s), ${waInstances.filter((w) => w.status === 'connected').length} connected.` : 'No WhatsApp number connected yet.', href: '/whatsapp' },
-    { id: 'sms', label: 'Connect SMS', status: smsStatus, detail: smsGateways.length ? `${smsGateways.length} gateway(s), ${smsGateways.filter((g) => g.status === 'connected').length} connected.` : 'No SMS gateway connected yet.', href: '/sms' },
-    { id: 'ai', label: 'AI configuration', status: aiConfigured() ? 'configured' : 'not_configured', detail: aiConfigured() ? 'An AI provider key is configured on this deployment.' : 'No AI provider key is set (GROQ_API_KEY/ANTHROPIC_API_KEY/OPENAI_API_KEY) — AI employees cannot draft, research, or analyze yet.', href: '/onboarding' },
-    { id: 'agents', label: 'Create AI employees', status: agentCount > 0 ? 'connected' : 'not_configured', detail: agentCount > 0 ? `${agentCount} AI employee(s) created.` : `${AGENT_TEMPLATES.length} built-in templates are ready to use.`, href: '/onboarding' },
-    { id: 'sample_task', label: 'Optional sample task', status: taskCount > 0 ? 'connected' : 'not_configured', detail: taskCount > 0 ? `${taskCount} task(s) have run.` : leadCount > 0 ? 'Ready — you have leads to try a real task on.' : 'Import a lead first to try a real sample task.', href: '/onboarding', optional: true },
-    { id: 'complete', label: 'Completion', status: 'connected', detail: 'Always available — Workforce is one click away regardless of setup progress.', href: '/workforce' },
+    { id: 'workspace', label: 'Workspace setup', status: 'connected', detail: `"${ws.name}" is created and ready.`, why: 'Every lead, campaign, and AI employee below lives inside this workspace.', href: '/settings' },
+    { id: 'profile', label: 'Profile / company information', status: profileConfigured ? 'configured' : 'needs_attention', detail: profileConfigured ? `Sending as ${ws.senderName} at ${ws.senderCompany}.` : 'Set a sender name and company.', why: 'The AI writer and every outgoing message sign off as this name and company — leaving it blank means every send looks unsigned.', href: '/settings' },
+    { id: 'email', label: 'Connect Email', status: emailStatus, detail: mailboxes.length ? `${mailboxes.length} mailbox(es), ${mailboxes.filter((m) => m.status === 'active').length} active.` : 'No mailbox connected yet.', why: 'Without a mailbox, email campaigns have nowhere to send from.', href: '/mailboxes' },
+    { id: 'whatsapp', label: 'Connect WhatsApp', status: waStatus, detail: waInstances.length ? `${waInstances.length} number(s), ${waInstances.filter((w) => w.status === 'connected').length} connected.` : 'No WhatsApp number connected yet.', why: 'Optional — only needed if you plan to reach leads over WhatsApp.', href: '/whatsapp' },
+    { id: 'sms', label: 'Connect SMS', status: smsStatus, detail: smsGateways.length ? `${smsGateways.length} gateway(s), ${smsGateways.filter((g) => g.status === 'connected').length} connected.` : 'No SMS gateway connected yet.', why: 'Optional — only needed if you plan to reach leads over SMS.', href: '/sms' },
+    { id: 'ai', label: 'AI configuration', status: aiConfigured() ? 'configured' : 'not_configured', detail: aiConfigured() ? 'An AI provider key is configured on this deployment.' : 'No AI provider key is set (GROQ_API_KEY/ANTHROPIC_API_KEY/OPENAI_API_KEY).', why: 'Every AI employee below — drafting, research, analysis — runs through this key. Without it, they cannot do any of their work.', href: '/onboarding' },
+    { id: 'agents', label: 'Create AI employees', status: agentCount > 0 ? 'connected' : 'not_configured', detail: agentCount > 0 ? `${agentCount} AI employee(s) created.` : `${AGENT_TEMPLATES.length} built-in templates are ready to use.`, why: 'These are the roles that draft, research, and propose work on your behalf — nothing runs until at least one exists.', href: '/onboarding' },
+    { id: 'sample_task', label: 'Optional sample task', status: taskCount > 0 ? 'connected' : 'not_configured', detail: taskCount > 0 ? `${taskCount} task(s) have run.` : leadCount > 0 ? 'Ready — you have leads to try a real task on.' : 'Import a lead first to try a real sample task.', why: 'The fastest way to see a real AI employee do real work before you commit to a full campaign.', href: '/onboarding', optional: true },
+    { id: 'complete', label: 'Completion', status: 'connected', detail: 'Always available — Workforce is one click away regardless of setup progress.', why: 'Come back here any time to add more channels or employees — nothing here is a one-time wizard.', href: '/workforce' },
   ];
 
   const required = steps.filter((s) => !s.optional && s.id !== 'complete');
