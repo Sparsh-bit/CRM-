@@ -18,6 +18,7 @@
     "sender:test": "tsx scripts/sender-governor-test.ts",
     "outreach:test": "tsx scripts/agent-outreach-test.ts",
     "command-center:test": "tsx scripts/command-center-test.ts",
+    "command-center-ui:test": "tsx scripts/command-center-ui-test.ts",
     "workforce-ui:test": "tsx scripts/workforce-ui-integration-test.ts",
     "approval:test": "tsx scripts/approval-regression-test.ts",
     "research:test": "tsx scripts/research-test.ts",

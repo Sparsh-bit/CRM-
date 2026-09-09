@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 
 const TABS = [
   ['/workforce', 'Overview'],
+  ['/workforce/command-center', 'Command Center'],
   ['/workforce/agents', 'Agents'],
   ['/workforce/tasks', 'Tasks'],
   ['/workforce/approvals', 'Approvals'],
