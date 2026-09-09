@@ -5,12 +5,14 @@
  * the self-test below) instead of silently rendering blank.
  */
 import { TaskStatus, ApprovalState, AutonomyLevel } from '@/generated/prisma/enums';
+export { type Tone, pillClass } from '@/lib/ui/tone';
+import type { Tone } from '@/lib/ui/tone';
 
-export type Tone = 'good' | 'warn' | 'bad' | 'muted' | 'accent';
-
-export function pillClass(tone: Tone) {
-  return `pill pill-${tone}`;
-}
+/** "In motion" task states — shared by the main dashboard and the Workforce overview so "active tasks" means the same thing in both places. */
+export const ACTIVE_TASK_STATUSES: TaskStatus[] = [
+  TaskStatus.Queued, TaskStatus.Thinking, TaskStatus.Working,
+  TaskStatus.WaitingForInput, TaskStatus.WaitingForApproval,
+];
 
 export const TASK_STATUS_META: Record<TaskStatus, { label: string; tone: Tone }> = {
   Queued: { label: 'Queued', tone: 'muted' },

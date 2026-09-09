@@ -8,11 +8,8 @@
  * different inline `bg-x/20 text-x` ternaries (mailboxes, whatsapp) plus one
  * undifferentiated flat pill (campaigns) plus unstyled bare text (leads).
  */
-export type Tone = 'good' | 'warn' | 'bad' | 'muted' | 'accent';
-
-export function pillClass(tone: Tone) {
-  return `pill pill-${tone}`;
-}
+export { type Tone, pillClass } from './tone';
+import type { Tone } from './tone';
 
 function metaOf(map: Record<string, Tone>, fallback: Tone = 'muted') {
   return (status: string) => ({ label: status, tone: map[status] ?? fallback });

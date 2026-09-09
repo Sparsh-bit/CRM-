@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { List, X } from '@phosphor-icons/react';
 
 export function NavBar({ items }: { items: [string, string][] }) {
   const pathname = usePathname();
@@ -21,7 +22,7 @@ export function NavBar({ items }: { items: [string, string][] }) {
           <Link
             key={href}
             href={href}
-            className={`px-3 py-1.5 rounded-md whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-md whitespace-nowrap transition-colors ${
               isActive(href) ? 'text-slate-100 bg-line' : 'text-muted hover:text-slate-100 hover:bg-line'
             }`}
           >
@@ -31,21 +32,24 @@ export function NavBar({ items }: { items: [string, string][] }) {
       </nav>
 
       <button
-        className="lg:hidden text-muted hover:text-slate-100 px-2 py-1.5 rounded-md hover:bg-line"
+        className="lg:hidden text-muted hover:text-slate-100 p-2 rounded-md hover:bg-line transition-colors"
         aria-label={open ? 'Close menu' : 'Open menu'}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        {open ? 'Close' : 'Menu'}
+        {open ? <X size={20} weight="bold" /> : <List size={20} weight="bold" />}
       </button>
 
       {open && (
-        <nav className="lg:hidden absolute left-0 right-0 top-14 bg-panel border-b border-line px-6 py-3 flex flex-col gap-1 text-sm z-10">
+        <nav
+          className="lg:hidden absolute left-0 right-0 top-14 bg-panel border-b border-line px-6 py-3 flex flex-col gap-1 text-sm z-10
+                     animate-[fadeIn_0.15s_ease-out]"
+        >
           {items.map(([href, label]) => (
             <Link
               key={href}
               href={href}
-              className={`px-3 py-2 rounded-md ${
+              className={`px-3 py-2.5 rounded-md transition-colors ${
                 isActive(href) ? 'text-slate-100 bg-line' : 'text-muted hover:text-slate-100 hover:bg-line'
               }`}
             >

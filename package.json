@@ -42,10 +42,11 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
-    "@smithy/node-http-handler": "^4.12.1",
     "@mozilla/readability": "^0.6.0",
+    "@phosphor-icons/react": "^2.1.10",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "@smithy/node-http-handler": "^4.12.1",
     "bcryptjs": "^2.4.3",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
