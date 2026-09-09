@@ -7,6 +7,7 @@
 import { db } from '../db';
 import { ApprovalState } from '@/generated/prisma/enums';
 import type { Prisma } from '@/generated/prisma/client';
+import { atLeast, type Role } from '../session';
 import { getApprovalPolicy } from './policies';
 import { logActivity } from './activity';
 // outreach.ts imports createApproval/decideApproval/getApproval from here too —
@@ -18,6 +19,21 @@ import { logActivity } from './activity';
 // to import it back anyway, so there is no version of "backend-authoritative,
 // single entry point" that avoids this edge.
 import { materializeApprovedMessage, OUTREACH_ACTION_TYPES } from './outreach';
+
+export type ApprovalActor = { workspaceId: string; role: Role };
+
+/**
+ * Deciding a pending approval is exactly "changes who can send" (session.ts's
+ * own definition of what requireRole gates) — approving one materializes a
+ * real outbound Message. Gated here, not just in the calling page, so no
+ * future caller (a route, a script, another UI) can accidentally approve a
+ * real send on behalf of a workspace member who shouldn't be able to.
+ */
+function requireAdmin(actor: ApprovalActor) {
+  if (!atLeast(actor.role, 'admin')) {
+    throw new Error(`Deciding an approval needs the admin role. You are ${actor.role} in this workspace.`);
+  }
+}
 
 export type CreateApprovalInput = {
   taskId: string;
@@ -65,21 +81,33 @@ export async function createApproval(workspaceId: string, data: CreateApprovalIn
 }
 
 export async function decideApproval(
-  workspaceId: string,
+  actor: ApprovalActor,
   approvalId: string,
   decision: 'Approved' | 'Rejected',
   decidedBy: string,
 ) {
+  requireAdmin(actor);
+  const { workspaceId } = actor;
+
   const approval = await db.approval.findFirst({ where: { id: approvalId, workspaceId } });
   if (!approval) throw new Error('Approval not found in this workspace.');
-  if (approval.status !== ApprovalState.Pending) {
-    throw new Error(`This approval was already decided (${approval.status}).`);
-  }
 
-  const updated = await db.approval.update({
-    where: { id: approvalId },
+  // Atomic compare-and-swap on status — the same conditional-updateMany
+  // pattern claimJob() uses for Job claiming (queue.ts). A plain
+  // read-then-write here let two concurrent decisions both pass the Pending
+  // check and both go on to materialize a Message (a double-send); this
+  // update only ever succeeds for whichever request gets there first — a
+  // second, concurrent or repeated call sees 0 rows affected and throws,
+  // exactly as it already did for a sequential repeat decision.
+  const claimed = await db.approval.updateMany({
+    where: { id: approvalId, workspaceId, status: ApprovalState.Pending },
     data: { status: decision, decidedBy, decidedAt: new Date() },
   });
+  if (claimed.count === 0) {
+    const current = await db.approval.findFirst({ where: { id: approvalId, workspaceId } });
+    throw new Error(`This approval was already decided (${current?.status ?? approval.status}).`);
+  }
+  const updated = await db.approval.findFirstOrThrow({ where: { id: approvalId, workspaceId } });
   await db.agentTask.update({ where: { id: approval.taskId }, data: { approvalState: decision } });
   await logActivity(workspaceId, {
     agentId: approval.agentId, taskId: approval.taskId,

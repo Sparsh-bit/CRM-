@@ -1,6 +1,28 @@
 import nodemailer from 'nodemailer';
 import { decrypt } from '../crypto';
 
+// Every other outbound integration in this codebase (WhatsApp's evolution.ts,
+// SMS's httpsms.ts, the AI provider router) wires an explicit timeout so a
+// hung connection can't block a worker tick indefinitely. Email's HTTP-API
+// providers (Resend/Gmail/Graph/OAuth refresh) were the one outlier, relying
+// on the runtime's own (much longer, and platform-dependent) socket
+// defaults — this closes that gap the same way the others already do it.
+const EMAIL_TIMEOUT_MS = Number(process.env.EMAIL_PROVIDER_TIMEOUT_MS ?? 15_000);
+const SMTP_TIMEOUT_MS = Number(process.env.SMTP_TIMEOUT_MS ?? 15_000);
+
+export async function timedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), EMAIL_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (e) {
+    if (controller.signal.aborted) throw new Error(`Request timed out after ${EMAIL_TIMEOUT_MS}ms`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export type SendArgs = {
   to: string;
   subject: string;
@@ -37,6 +59,9 @@ function smtpTransport(mb: MailboxLike) {
     port: mb.smtpPort ?? 465,
     secure: mb.smtpSecure,
     auth: { user: mb.smtpUser ?? mb.fromEmail, pass: decrypt(mb.smtpPassEnc) },
+    connectionTimeout: SMTP_TIMEOUT_MS,
+    greetingTimeout: SMTP_TIMEOUT_MS,
+    socketTimeout: SMTP_TIMEOUT_MS,
   });
 }
 
@@ -54,7 +79,7 @@ async function sendSmtp(mb: MailboxLike, a: SendArgs): Promise<SendResult> {
 async function sendResend(mb: MailboxLike, a: SendArgs): Promise<SendResult> {
   const key = decrypt(mb.apiKeyEnc) || process.env.RESEND_API_KEY || '';
   if (!key) throw new Error('Resend API key missing');
-  const res = await fetch('https://api.resend.com/emails', {
+  const res = await timedFetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
     body: JSON.stringify({
@@ -83,7 +108,7 @@ export async function refreshOauth(mb: MailboxLike): Promise<{ access: string; e
     client_id: (google ? process.env.GOOGLE_CLIENT_ID : process.env.MICROSOFT_CLIENT_ID) || '',
     client_secret: (google ? process.env.GOOGLE_CLIENT_SECRET : process.env.MICROSOFT_CLIENT_SECRET) || '',
   });
-  const res = await fetch(url, { method: 'POST', body });
+  const res = await timedFetch(url, { method: 'POST', body });
   if (!res.ok) throw new Error(`OAuth refresh ${res.status}: ${await res.text()}`);
   const j = (await res.json()) as { access_token: string; expires_in: number };
   return { access: j.access_token, expiresAt: new Date(Date.now() + (j.expires_in - 60) * 1000) };
@@ -121,7 +146,7 @@ async function sendGmail(mb: MailboxLike, a: SendArgs): Promise<SendResult> {
   const token = await accessToken(mb);
   const raw = Buffer.from(rfc822(mb, a)).toString('base64')
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+  const res = await timedFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify({ raw }),
@@ -133,7 +158,7 @@ async function sendGmail(mb: MailboxLike, a: SendArgs): Promise<SendResult> {
 
 async function sendOutlook(mb: MailboxLike, a: SendArgs): Promise<SendResult> {
   const token = await accessToken(mb);
-  const res = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+  const res = await timedFetch('https://graph.microsoft.com/v1.0/me/sendMail', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     body: JSON.stringify({
@@ -170,7 +195,7 @@ export async function verifyMailbox(mb: MailboxLike): Promise<void> {
     case 'resend': {
       const key = decrypt(mb.apiKeyEnc) || process.env.RESEND_API_KEY || '';
       if (!key) throw new Error('Resend API key missing');
-      const res = await fetch('https://api.resend.com/domains', { headers: { authorization: `Bearer ${key}` } });
+      const res = await timedFetch('https://api.resend.com/domains', { headers: { authorization: `Bearer ${key}` } });
       if (!res.ok) throw new Error(`Resend ${res.status}: ${await res.text()}`);
       return;
     }

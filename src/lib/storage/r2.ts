@@ -21,6 +21,7 @@
 import {
   S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand,
 } from '@aws-sdk/client-s3';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -48,6 +49,16 @@ export type R2Config = {
 // found while auditing for it — fixed the same way.
 let cached: { key: string; client: S3Client } | null = null;
 
+// Every other outbound integration in this codebase (AI provider, WhatsApp,
+// SMS, research fetch/search) wires an explicit timeout so a hung connection
+// can't block a worker tick indefinitely — the S3Client was the one outlier,
+// relying entirely on the AWS SDK's own (much longer, and less predictable
+// across versions) defaults. connectionTimeout bounds the TCP+TLS handshake;
+// requestTimeout bounds the whole request once sent — larger than the other
+// integrations' since a media upload/download can legitimately be tens of MB.
+const CONNECT_TIMEOUT_MS = Number(process.env.STORAGE_R2_CONNECT_TIMEOUT_MS ?? 10_000);
+const REQUEST_TIMEOUT_MS = Number(process.env.STORAGE_R2_REQUEST_TIMEOUT_MS ?? 30_000);
+
 function resolveEndpoint(cfg: R2Config): string {
   if (cfg.endpoint) return cfg.endpoint;
   if (cfg.accountId) return `https://${cfg.accountId}.r2.cloudflarestorage.com`;
@@ -63,6 +74,15 @@ function client(cfg: R2Config): S3Client {
     endpoint,
     forcePathStyle: cfg.forcePathStyle ?? !!cfg.endpoint, // third-party S3-compatible services (MinIO included) almost always need this; R2's own default (no custom endpoint) does not
     credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
+    // throwOnRequestTimeout is NOT the default — without it, NodeHttpHandler
+    // only logs a warning when requestTimeout is exceeded and lets the
+    // request hang anyway (confirmed empirically: scripts/outbound-timeout-
+    // test.ts hung well past its configured 600ms until this was added).
+    // The timeout config alone does nothing on its own SDK version; this
+    // flag is what actually makes it abort.
+    requestHandler: new NodeHttpHandler({
+      connectionTimeout: CONNECT_TIMEOUT_MS, requestTimeout: REQUEST_TIMEOUT_MS, throwOnRequestTimeout: true,
+    }),
   });
   cached = { key, client: built };
   return built;

@@ -113,7 +113,7 @@ async function main() {
     check('a real Pending approval was created', proposed.approval.status, 'Pending');
 
     // Approve through decideApproval() — the EXACT function the Workforce Approvals UI's decide() action calls (Phase 8).
-    const decided = await decideApproval(ws.id, proposed.approval.id, 'Approved', user.id);
+    const decided = await decideApproval(admin, proposed.approval.id, 'Approved', user.id);
     check('decideApproval (the real UI path) flips the approval to Approved', decided.status, 'Approved');
     checkTrue('...and materializes a real, queued Message', !!decided.messageId);
     const job = await db.job.findFirst({ where: { workspaceId: ws.id, type: 'send_message' } });

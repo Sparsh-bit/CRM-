@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { assertListOwnership } from '@/lib/campaign';
 import { campaignStatusMeta, pillClass } from '@/lib/ui/status';
 
 export const dynamic = 'force-dynamic';
@@ -26,11 +27,14 @@ async function create(formData: FormData) {
   const ws = await db.workspace.findUniqueOrThrow({ where: { id: s.workspaceId } });
   const aiEnabled = String(formData.get('mode')) === 'ai';
 
+  const listId = String(formData.get('listId') || '') || null;
+  if (listId) await assertListOwnership(s.workspaceId, listId);
+
   const c = await db.campaign.create({
     data: {
       workspaceId: s.workspaceId,
       name: String(formData.get('name') || 'Untitled campaign'),
-      listId: String(formData.get('listId') || '') || null,
+      listId,
       channel: String(formData.get('channel') || 'email'),
       timezone: ws.timezone,
       aiEnabled,

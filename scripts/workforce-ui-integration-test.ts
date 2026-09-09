@@ -95,14 +95,14 @@ async function main() {
     const propose1 = await proposeOutreach(ws.id, agent.id, outreachTask.id, {
       leadId: lead.id, channel: 'email', subject: 'hi', body: 'hi', reason: 'ui integration test',
     });
-    const decidedRaw = await decideApproval(ws.id, propose1.approval.id, 'Approved', human.id);
+    const decidedRaw = await decideApproval(admin, propose1.approval.id, 'Approved', human.id);
     check('decideApproval() — the exact function approvals/page.tsx\'s decide() action calls — flips the approval to Approved', decidedRaw.status, 'Approved');
     check('...and now DOES create the real, queued message — the bug is fixed at the root (decideApproval itself), not papered over in the UI', await db.message.count({ where: { workspaceId: ws.id, leadId: lead.id } }), 1);
 
     const propose2 = await proposeOutreach(ws.id, agent.id, outreachTask.id, {
       leadId: lead.id, channel: 'whatsapp', body: 'hi', reason: 'ui integration test 2',
     });
-    const decidedFixed = await decideOutreachApproval(ws.id, propose2.approval.id, 'Approved', human.id);
+    const decidedFixed = await decideOutreachApproval(admin, propose2.approval.id, 'Approved', human.id);
     check('decideOutreachApproval() — a thin wrapper over the same decideApproval(), for a caller that wants the Message back — also creates the real queued message', decidedFixed.message?.status, 'queued');
 
     // ── approvals list query pattern (approvals/page.tsx) — pending vs. decided split ──

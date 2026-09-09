@@ -142,12 +142,12 @@ async function main() {
     check('message_proposed and approval_requested were logged', ['message_proposed', 'approval_requested'].every((t) => emailLog.some((a) => a.type === t)), true);
 
     // workspace isolation on the decision itself
-    await checkThrows('another workspace cannot decide this approval', () => decideOutreachApproval(other.id, emailApprovalId, 'Approved', human.id));
+    await checkThrows('another workspace cannot decide this approval', () => decideOutreachApproval({ workspaceId: other.id, role: 'admin' }, emailApprovalId, 'Approved', human.id));
 
-    const emailDecided = await decideOutreachApproval(ws.id, emailApprovalId, 'Approved', human.id);
+    const emailDecided = await decideOutreachApproval(admin, emailApprovalId, 'Approved', human.id);
     check('approving creates a real, queued Message', emailDecided.message?.status, 'queued');
     check('the message is linked back to the task that proposed it', emailDecided.message?.agentTaskId, emailPropose!.id);
-    await checkThrows('the same approval cannot be decided twice (repeated approval)', () => decideOutreachApproval(ws.id, emailApprovalId, 'Rejected', human.id));
+    await checkThrows('the same approval cannot be decided twice (repeated approval)', () => decideOutreachApproval(admin, emailApprovalId, 'Rejected', human.id));
 
     await sendDueMessages(ws.id);
     const emailSent = await db.message.findUniqueOrThrow({ where: { id: emailDecided.message!.id } });
@@ -159,7 +159,7 @@ async function main() {
     // ── EMAIL: rejection ─────────────────────────────────────────────────
     const emailRejectPropose = await runTask(ws.id, agent.id, [{ tool: 'propose_send', args: { leadId: emailOnlyLead.id, channel: 'email', subject: 'x', body: 'x', reason: 'x' } }]);
     const emailRejectId = firstResultData(emailRejectPropose)?.approvalId;
-    const rejected = await decideOutreachApproval(ws.id, emailRejectId, 'Rejected', human.id);
+    const rejected = await decideOutreachApproval(admin, emailRejectId, 'Rejected', human.id);
     check('rejecting creates no message', rejected.message, null);
     check('rejected messages count stays zero for this lead', await db.message.count({ where: { leadId: emailOnlyLead.id } }), 0);
 
@@ -171,7 +171,7 @@ async function main() {
     await db.mailbox.update({ where: { id: mailbox.id }, data: { lastSentAt: null } }); // clear the min-gap from the earlier successful send
     const emailFailPropose = await runTask(ws.id, agent.id, [{ tool: 'propose_send', args: { leadId: emailOnlyLead.id, channel: 'email', subject: 'x', body: 'x', reason: 'x' } }]);
     const emailFailId = firstResultData(emailFailPropose)?.approvalId;
-    const emailFailDecided = await decideOutreachApproval(ws.id, emailFailId, 'Approved', human.id);
+    const emailFailDecided = await decideOutreachApproval(admin, emailFailId, 'Approved', human.id);
     await sendDueMessages(ws.id);
     const emailFailedMsg = await db.message.findUniqueOrThrow({ where: { id: emailFailDecided.message!.id } });
     check('a real provider rejection marks the message failed, not sent', emailFailedMsg.status, 'failed');
@@ -185,7 +185,7 @@ async function main() {
     });
     const waPropose = await runTask(ws.id, agent.id, [{ tool: 'propose_send', args: { leadId: lead.id, channel: 'whatsapp', body: 'Hi Pat, quick one.', reason: 'cold intro' } }]);
     const waApprovalId = firstResultData(waPropose)?.approvalId;
-    const waDecided = await decideOutreachApproval(ws.id, waApprovalId, 'Approved', human.id);
+    const waDecided = await decideOutreachApproval(admin, waApprovalId, 'Approved', human.id);
     check('WhatsApp approval creates a queued message', waDecided.message?.status, 'queued');
     await sendDueMessages(ws.id);
     check('the real worker sends the WhatsApp message', (await db.message.findUniqueOrThrow({ where: { id: waDecided.message!.id } })).status, 'sent');
@@ -203,7 +203,7 @@ async function main() {
     const waFailLead = await db.lead.create({ data: { workspaceId: ws.id, listId: list.id, fullName: 'Wa Fail Lead', phone: '+15550009', status: 'new' } });
     const waFailPropose = await runTask(ws.id, agent.id, [{ tool: 'propose_send', args: { leadId: waFailLead.id, channel: 'whatsapp', body: 'x', reason: 'x' } }]);
     const waFailId = firstResultData(waFailPropose)?.approvalId;
-    const waFailDecided = await decideOutreachApproval(ws.id, waFailId, 'Approved', human.id);
+    const waFailDecided = await decideOutreachApproval(admin, waFailId, 'Approved', human.id);
     await sendDueMessages(ws.id);
     check('a real provider failure marks the whatsapp message failed', (await db.message.findUniqueOrThrow({ where: { id: waFailDecided.message!.id } })).status, 'failed');
 
@@ -215,7 +215,7 @@ async function main() {
     const smsLead = await db.lead.create({ data: { workspaceId: ws.id, listId: list.id, fullName: 'Sms Lead', phone: '+15550006', status: 'new' } });
     const smsPropose = await runTask(ws.id, agent.id, [{ tool: 'propose_send', args: { leadId: smsLead.id, channel: 'sms', body: 'Hi, quick one.', reason: 'cold intro' } }]);
     const smsApprovalId = firstResultData(smsPropose)?.approvalId;
-    const smsDecided = await decideOutreachApproval(ws.id, smsApprovalId, 'Approved', human.id);
+    const smsDecided = await decideOutreachApproval(admin, smsApprovalId, 'Approved', human.id);
     check('SMS approval creates a queued message', smsDecided.message?.status, 'queued');
     await sendDueMessages(ws.id);
     check('the real worker sends the sms message', (await db.message.findUniqueOrThrow({ where: { id: smsDecided.message!.id } })).status, 'sent');
@@ -229,7 +229,7 @@ async function main() {
     const smsLead2 = await db.lead.create({ data: { workspaceId: ws.id, listId: list.id, fullName: 'Sms Lead 2', phone: '+15550007', status: 'new' } });
     const smsFailPropose = await runTask(ws.id, agent.id, [{ tool: 'propose_send', args: { leadId: smsLead2.id, channel: 'sms', body: 'x', reason: 'x' } }]);
     const smsFailId = firstResultData(smsFailPropose)?.approvalId;
-    const smsFailDecided = await decideOutreachApproval(ws.id, smsFailId, 'Approved', human.id);
+    const smsFailDecided = await decideOutreachApproval(admin, smsFailId, 'Approved', human.id);
     await sendDueMessages(ws.id);
     check('a real provider rejection marks the sms message failed', (await db.message.findUniqueOrThrow({ where: { id: smsFailDecided.message!.id } })).status, 'failed');
 

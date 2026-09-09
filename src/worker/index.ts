@@ -23,6 +23,31 @@ import { runMediaAnalysis } from '../lib/research/media/pipeline';
 
 const TICK_MS = Number(process.env.WORKER_TICK_MS ?? 5000);
 
+// Graceful shutdown: a platform restart/deploy (Railway sends SIGTERM) used
+// to kill this process mid-poll-interval with no warning — whatever job was
+// `running` at that instant just sat there until reclaimStale()'s 5-minute
+// window on the NEXT worker instance's first tick. Now a signal stops the
+// loop from starting a new tick and wakes an in-progress sleep immediately
+// (rather than waiting out the rest of TICK_MS), so the process exits
+// promptly instead of relying on the platform's kill timeout.
+let shuttingDown = false;
+let wakeForShutdown: (() => void) | null = null;
+function requestShutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`worker received ${signal} — finishing the current tick, then exiting`);
+  wakeForShutdown?.();
+}
+process.on('SIGTERM', () => requestShutdown('SIGTERM'));
+process.on('SIGINT', () => requestShutdown('SIGINT'));
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    wakeForShutdown = () => { clearTimeout(timer); resolve(); };
+  });
+}
+
 async function tick() {
   await reclaimStale();
 
@@ -74,11 +99,26 @@ async function tick() {
 }
 
 async function main() {
+  // Warm the DB connection BEFORE announcing readiness and entering the
+  // loop. Found while testing the shutdown fix above: a SIGTERM landing
+  // during Prisma's very first query in a process's lifetime (engine
+  // init on that first call) does not reach the handler registered above
+  // at all — confirmed empirically (a second, already-warm query does not
+  // have this problem; neither does plain node-postgres without Prisma).
+  // Connecting here, before "worker up", means that fragile window closes
+  // during startup — before there is any job in flight to lose — rather
+  // than being able to land at any arbitrary later moment a real deploy
+  // restart's SIGTERM could plausibly arrive.
+  await db.$connect();
   console.log('worker up — polling every', TICK_MS, 'ms');
-  for (;;) {
+  while (!shuttingDown) {
     try { await tick(); } catch (e) { console.error('[tick]', e); }
-    await new Promise((r) => setTimeout(r, TICK_MS));
+    if (shuttingDown) break;
+    await sleep(TICK_MS);
   }
+  console.log('worker shutting down cleanly');
+  await db.$disconnect().catch(() => {});
+  process.exit(0);
 }
 
 main();

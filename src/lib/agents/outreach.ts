@@ -15,7 +15,7 @@
 import { db } from '../db';
 import { nanoid } from 'nanoid';
 import { enqueue } from '../queue';
-import { createApproval, decideApproval, getApproval } from './approvals';
+import { createApproval, decideApproval, getApproval, type ApprovalActor } from './approvals';
 import { logActivity } from './activity';
 import { ApprovalState } from '@/generated/prisma/enums';
 import type { Prisma } from '@/generated/prisma/client';
@@ -163,12 +163,12 @@ export async function proposeOutreach(
  * and this wrapper end up calling the exact same function.
  */
 export async function decideOutreachApproval(
-  workspaceId: string,
+  actor: ApprovalActor,
   approvalId: string,
   decision: 'Approved' | 'Rejected',
   decidedBy: string,
 ) {
-  const updated = await decideApproval(workspaceId, approvalId, decision, decidedBy);
+  const updated = await decideApproval(actor, approvalId, decision, decidedBy);
   const message = updated.messageId ? await db.message.findUnique({ where: { id: updated.messageId } }) : null;
   return { approval: updated, message };
 }
@@ -216,7 +216,32 @@ export async function materializeApprovedMessage(workspaceId: string, approvalId
   });
   await logActivity(workspaceId, { agentId: approval.agentId, taskId: approval.taskId, type: 'message_created', meta: { messageId: message.id, channel: content.channel } });
 
-  const updatedApproval = await db.approval.update({ where: { id: approvalId }, data: { messageId: message.id } });
+  // Atomic compare-and-swap on messageId, not a plain update — decideApproval's
+  // own CAS already means only one caller ever reaches this function per
+  // decision, but this function is a public export other call sites use too
+  // (proposeOutreach's auto-approve path). A plain read-then-write here (the
+  // messageId-null check above, then an unconditional update) let two truly
+  // concurrent calls each create their own Message row and then race to
+  // "win" the messageId field — the last write wins, silently orphaning the
+  // other Message as a real, still-queued, still-sendable duplicate. The
+  // @unique constraint on Approval.messageId doesn't stop that: it only
+  // stops the same messageId being linked twice, not two different Message
+  // rows existing for one approval. This closes it at the write itself.
+  const claimed = await db.approval.updateMany({
+    where: { id: approvalId, workspaceId, messageId: null },
+    data: { messageId: message.id },
+  });
+  if (claimed.count === 0) {
+    // Someone else materialized first — this call's Message would be a
+    // duplicate send waiting to happen. Delete it and return the real one.
+    await db.message.delete({ where: { id: message.id } }).catch(() => {});
+    const existingApproval = await getApproval(workspaceId, approvalId);
+    const existingMessage = existingApproval?.messageId
+      ? await db.message.findUnique({ where: { id: existingApproval.messageId } })
+      : null;
+    return { approval: existingApproval ?? approval, message: existingMessage };
+  }
+  const updatedApproval = await db.approval.findFirstOrThrow({ where: { id: approvalId, workspaceId } });
 
   // Same enqueue the worker's own fallback sweep uses for a campaign-less
   // message (src/worker/index.ts) — sendDueMessages() sweeps by workspaceId

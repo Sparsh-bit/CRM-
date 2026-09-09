@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { db } from '@/lib/db';
 import { createSession, getSession } from '@/lib/session';
+import { checkLoginRateLimit } from '@/lib/auth/rateLimit';
 import bcrypt from 'bcryptjs';
 
 export const dynamic = 'force-dynamic';
@@ -10,6 +12,13 @@ async function submit(formData: FormData) {
   const email = String(formData.get('email') || '').trim().toLowerCase();
   const password = String(formData.get('password') || '');
   if (!email || password.length < 8) throw new Error('Email and an 8+ character password are required');
+
+  // Every attempt counts against budget, not just failures — an unrecognized
+  // email below silently creates a new workspace, which is itself the
+  // resource-exhaustion risk this guards against, not only password guessing.
+  const ip = (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  await checkLoginRateLimit(`email:${email}`);
+  await checkLoginRateLimit(`ip:${ip}`);
 
   let user = await db.user.findUnique({ where: { email }, include: { memberships: true } });
 

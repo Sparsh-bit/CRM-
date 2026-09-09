@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { enqueue } from '@/lib/queue';
-import { preflight, buildQueue, leadMergeContext } from '@/lib/campaign';
+import { preflight, buildQueue, leadMergeContext, updateCampaignStep, updateCampaignDraft } from '@/lib/campaign';
 import { render, extractTags } from '@/lib/template';
 import { campaignStatusMeta, pillClass } from '@/lib/ui/status';
 
@@ -23,14 +23,11 @@ async function saveStep(formData: FormData) {
   'use server';
   const id = String(formData.get('campaignId'));
   await guard(id);
-  await db.campaignStep.update({
-    where: { id: String(formData.get('stepId')) },
-    data: {
-      subject: String(formData.get('subject') || '') || null,
-      body: String(formData.get('body') || ''),
-      delayDays: Number(formData.get('delayDays') || 0),
-      condition: String(formData.get('condition') || 'no_reply'),
-    },
+  await updateCampaignStep(id, String(formData.get('stepId')), {
+    subject: String(formData.get('subject') || '') || null,
+    body: String(formData.get('body') || ''),
+    delayDays: Number(formData.get('delayDays') || 0),
+    condition: String(formData.get('condition') || 'no_reply'),
   });
   redirect(`/campaigns/${id}`);
 }
@@ -84,13 +81,9 @@ async function saveDraft(formData: FormData) {
   'use server';
   const id = String(formData.get('campaignId'));
   await guard(id);
-  await db.draft.update({
-    where: { id: String(formData.get('draftId')) },
-    data: {
-      subject: String(formData.get('subject') || '') || null,
-      body: String(formData.get('body') || ''),
-      approved: true, edited: true,
-    },
+  await updateCampaignDraft(id, String(formData.get('draftId')), {
+    subject: String(formData.get('subject') || '') || null,
+    body: String(formData.get('body') || ''),
   });
   redirect(`/campaigns/${id}#drafts`);
 }

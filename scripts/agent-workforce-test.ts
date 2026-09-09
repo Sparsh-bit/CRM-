@@ -114,10 +114,10 @@ async function main() {
     check('a standing AutoApprove policy resolves the approval immediately', autoApproved.status, 'Approved');
     check('a policy decision is not attributed to a human', autoApproved.decidedBy, null);
 
-    const decided = await decideApproval(ws.id, approval.id, 'Approved', human.id);
+    const decided = await decideApproval(admin, approval.id, 'Approved', human.id);
     check('a human decision records who decided', decided.decidedBy, human.id);
     await checkThrows('a decided approval cannot be decided again', () =>
-      decideApproval(ws.id, approval.id, 'Rejected', human.id));
+      decideApproval(admin, approval.id, 'Rejected', human.id));
     check('a different workspace cannot see this approval', await getApproval(other.id, approval.id), null);
 
     // ── activity logging ─────────────────────────────────────────────

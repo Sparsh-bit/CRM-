@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
-import { requireSession, getSession } from '@/lib/session';
+import { requireSession, getSession, currentRole } from '@/lib/session';
 import { decideApproval } from '@/lib/agents/approvals';
 import { ApprovalState } from '@/generated/prisma/enums';
 import { pillClass, APPROVAL_STATE_META } from '../_lib/status';
@@ -11,9 +11,11 @@ export const dynamic = 'force-dynamic';
 async function decide(formData: FormData) {
   'use server';
   const session = await requireSession();
+  const role = await currentRole();
+  if (!role) throw new Error('You are not a member of this workspace.');
   const approvalId = String(formData.get('approvalId'));
   const decision = String(formData.get('decision')) === 'Approved' ? 'Approved' : 'Rejected';
-  await decideApproval(session.workspaceId, approvalId, decision, session.userId);
+  await decideApproval({ workspaceId: session.workspaceId, role }, approvalId, decision, session.userId);
   revalidatePath('/workforce/approvals');
   revalidatePath('/workforce');
 }

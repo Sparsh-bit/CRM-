@@ -716,3 +716,19 @@ model KnowledgeChunk {
 
   @@index([workspaceId, sourceUrl])
 }
+
+/**
+ * Rate-limits src/app/login/page.tsx — the one endpoint with no session yet,
+ * so nothing else in the app gates it. One row per identifier
+ * ("email:x@y.com" or "ip:1.2.3.4"); a fixed window starting at windowStart,
+ * reset once it's older than the configured window (src/lib/auth/rateLimit.ts).
+ * DB-backed rather than an in-memory Map so the limit holds across process
+ * restarts and would still hold if this service ever ran as more than one
+ * instance — an in-memory counter is private per instance and would
+ * silently multiply the real limit instead of enforcing it.
+ */
+model LoginAttempt {
+  identifier  String   @id
+  count       Int      @default(1)
+  windowStart DateTime @default(now())
+}

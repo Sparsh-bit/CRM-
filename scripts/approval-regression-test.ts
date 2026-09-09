@@ -92,11 +92,11 @@ async function main() {
         leadId: lead.id, channel: c.channel, body: `hi via ${c.channel}`, subject: c.subject, reason: 'approval regression test',
       });
       check(`[${c.channel}] cross-workspace: workspace B cannot decide workspace A's approval`, await (async () => {
-        try { await decideApproval(other.id, approval.id, 'Approved', human.id); return 'did not throw'; }
+        try { await decideApproval({ workspaceId: other.id, role: 'admin' }, approval.id, 'Approved', human.id); return 'did not throw'; }
         catch { return 'threw'; }
       })(), 'threw');
 
-      const decided = await decideApproval(ws.id, approval.id, 'Approved', human.id);
+      const decided = await decideApproval(admin, approval.id, 'Approved', human.id);
       check(`[${c.channel}] decideApproval (the UI's exact call) flips the approval to Approved`, decided.status, 'Approved');
       check(`[${c.channel}] decideApproval materializes a real Message id on the approval`, typeof decided.messageId === 'string', true);
 
@@ -120,7 +120,7 @@ async function main() {
     const { approval: rejectApproval } = await proposeOutreach(ws.id, agent.id, task.id, {
       leadId: rejectLead.id, channel: 'email', subject: 'x', body: 'x', reason: 'reject path',
     });
-    const rejected = await decideApproval(ws.id, rejectApproval.id, 'Rejected', human.id);
+    const rejected = await decideApproval(admin, rejectApproval.id, 'Rejected', human.id);
     check('reject: the approval flips to Rejected', rejected.status, 'Rejected');
     check('reject: no messageId was ever set', rejected.messageId, null);
     check('reject: no Message row exists for this lead', await db.message.count({ where: { leadId: rejectLead.id } }), 0);
@@ -131,14 +131,14 @@ async function main() {
     check('reject: message_created was never logged for this approval', rejectApprovalActivity.some((a) => a.type === 'message_created'), false);
 
     await checkThrows('a decided approval cannot be decided again through decideApproval', () =>
-      decideApproval(ws.id, rejectApproval.id, 'Approved', human.id));
+      decideApproval(admin, rejectApproval.id, 'Approved', human.id));
 
     // ═══ REAL WORKER: one approved email actually claimed and driven by a real, separate `npm run worker` process ═══
     const realWorkerLead = await db.lead.create({ data: { workspaceId: ws.id, listId: list.id, fullName: 'Real Worker Lead', email: 'real-worker@test.local', status: 'new' } });
     const { approval: rwApproval } = await proposeOutreach(ws.id, agent.id, task.id, {
       leadId: realWorkerLead.id, channel: 'email', subject: 'real worker', body: 'real worker body', reason: 'real worker regression',
     });
-    const rwDecided = await decideApproval(ws.id, rwApproval.id, 'Approved', human.id);
+    const rwDecided = await decideApproval(admin, rwApproval.id, 'Approved', human.id);
     const rwMessageId = rwDecided.messageId!;
     check('real-worker setup: the message to drive is queued before the worker runs', (await db.message.findUnique({ where: { id: rwMessageId } }))?.status, 'queued');
 
