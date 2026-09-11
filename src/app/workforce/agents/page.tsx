@@ -5,7 +5,6 @@ import { getSession, requireSession, currentRole } from '@/lib/session';
 import { createAgent } from '@/lib/agents/agents';
 import { AutonomyLevel } from '@/generated/prisma/enums';
 import { agentStatusMeta, AUTONOMY_META } from '../_lib/status';
-import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 
@@ -31,40 +30,54 @@ export default async function AgentsPage() {
   const s = await getSession();
   if (!s) redirect('/login');
 
-  const agents = await db.agent.findMany({
-    where: { workspaceId: s.workspaceId }, orderBy: { createdAt: 'asc' },
-    include: { _count: { select: { tasks: true, approvals: true } } },
-  });
+  const [agents, lastActivity] = await Promise.all([
+    db.agent.findMany({
+      where: { workspaceId: s.workspaceId }, orderBy: { createdAt: 'asc' },
+      include: { _count: { select: { tasks: true } } },
+    }),
+    db.agentActivityLog.groupBy({ by: ['agentId'], where: { workspaceId: s.workspaceId }, _max: { createdAt: true } }),
+  ]);
+  const lastActivityByAgent = new Map(lastActivity.map((a) => [a.agentId, a._max.createdAt]));
 
   return (
     <div className="space-y-8">
       {agents.length ? (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {agents.map((a) => (
-            <Link key={a.id} href={`/workforce/agents/${a.id}`} className="group min-w-0">
-              <Card className="h-full space-y-3 hover:border-accent/40 transition-colors">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-lg bg-line flex items-center justify-center text-xs font-display font-semibold shrink-0">
-                      {a.name.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium truncate group-hover:text-accent transition-colors">{a.name}</div>
-                      <div className="text-secondary truncate">{a.role}{a.department ? ` · ${a.department}` : ''}</div>
-                    </div>
+        <div className="divide-y divide-line border-t border-b border-line">
+          {agents.map((a) => {
+            const last = lastActivityByAgent.get(a.id);
+            return (
+              <Link
+                key={a.id}
+                href={`/workforce/agents/${a.id}`}
+                className="group flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 py-4 hover:bg-line/30 -mx-4 px-4 transition-colors"
+              >
+                <div className="flex items-center gap-3 sm:w-64 shrink-0 min-w-0">
+                  <div className="w-9 h-9 rounded-lg bg-line flex items-center justify-center text-xs font-display font-semibold shrink-0">
+                    {a.name.slice(0, 2).toUpperCase()}
                   </div>
-                  <Badge {...agentStatusMeta(a.status)} className="shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate group-hover:text-accent transition-colors">{a.name}</div>
+                    <div className="text-secondary truncate">{a.role}{a.department ? ` · ${a.department}` : ''}</div>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between border-t border-line pt-3">
-                  <span className="text-secondary">{a._count.tasks} task{a._count.tasks === 1 ? '' : 's'}</span>
-                  <Badge {...AUTONOMY_META[a.autonomyLevel]} />
+
+                <p className="text-secondary flex-1 min-w-0 truncate sm:truncate">
+                  {a.objective || 'No objective set.'}
+                </p>
+
+                <div className="flex items-center gap-4 shrink-0 sm:w-auto justify-between sm:justify-end">
+                  <span className="text-secondary whitespace-nowrap">
+                    {a._count.tasks} task{a._count.tasks === 1 ? '' : 's'} · {last ? `active ${last.toLocaleDateString()}` : 'no activity yet'}
+                  </span>
+                  <Badge {...AUTONOMY_META[a.autonomyLevel]} className="hidden md:inline-flex" />
+                  <Badge {...agentStatusMeta(a.status)} />
                 </div>
-              </Card>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       ) : (
-        <Card className="text-center py-12 text-secondary">No AI employees yet — add your first one below.</Card>
+        <p className="text-secondary border-t border-b border-line py-12 text-center">No AI employees yet — add your first one below.</p>
       )}
 
       <form action={create} className="card space-y-4 max-w-2xl">

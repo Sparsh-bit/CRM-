@@ -4,7 +4,6 @@ import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { TaskStatus, ApprovalState } from '@/generated/prisma/enums';
 import { agentStatusMeta, ACTIVE_TASK_STATUSES } from './_lib/status';
-import { StatTile } from '@/components/StatTile';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 
@@ -15,7 +14,7 @@ export default async function WorkforceOverview() {
   if (!s) redirect('/login');
   const w = s.workspaceId;
 
-  const [agentCount, activeTaskCount, completedTaskCount, pendingApprovalCount, pendingApprovals, failedTasks, agents] = await Promise.all([
+  const [agentCount, activeTaskCount, completedTaskCount, pendingApprovalCount, pendingApprovals, failedTasks, recentlyCompleted, agents] = await Promise.all([
     db.agent.count({ where: { workspaceId: w } }),
     db.agentTask.count({ where: { workspaceId: w, status: { in: ACTIVE_TASK_STATUSES } } }),
     db.agentTask.count({ where: { workspaceId: w, status: TaskStatus.Completed } }),
@@ -26,6 +25,10 @@ export default async function WorkforceOverview() {
     }),
     db.agentTask.findMany({
       where: { workspaceId: w, status: TaskStatus.Failed }, orderBy: { updatedAt: 'desc' }, take: 5,
+      include: { agent: true },
+    }),
+    db.agentTask.findMany({
+      where: { workspaceId: w, status: TaskStatus.Completed }, orderBy: { updatedAt: 'desc' }, take: 4,
       include: { agent: true },
     }),
     db.agent.findMany({
@@ -45,43 +48,77 @@ export default async function WorkforceOverview() {
   }
 
   const needsAttention = pendingApprovals.length + failedTasks.length;
+  const hero: Array<[string, number, 'accent' | 'warn' | 'good' | undefined, string]> = [
+    ['Agents', agentCount, undefined, '/workforce/agents'],
+    ['Active tasks', activeTaskCount, activeTaskCount > 0 ? 'accent' : undefined, '/workforce/tasks'],
+    ['Pending approvals', pendingApprovalCount, pendingApprovalCount > 0 ? 'warn' : undefined, '/workforce/approvals'],
+    ['Completed tasks', completedTaskCount, 'good', '/workforce/tasks'],
+  ];
+  const TONE_CLASS: Record<string, string> = { accent: 'text-accent', warn: 'text-warn', good: 'text-good' };
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatTile label="Agents" value={agentCount} href="/workforce/agents" />
-        <StatTile label="Active tasks" value={activeTaskCount} tone={activeTaskCount > 0 ? 'accent' : undefined} href="/workforce/tasks" />
-        <StatTile label="Pending approvals" value={pendingApprovalCount} tone={pendingApprovalCount > 0 ? 'warn' : undefined} href="/workforce/approvals" />
-        <StatTile label="Completed tasks" value={completedTaskCount} tone="good" href="/workforce/tasks" />
+    <div className="space-y-8">
+      {/* Open metric strip, not four boxed tiles */}
+      <div className="flex flex-wrap gap-x-10 gap-y-5">
+        {hero.map(([label, value, tone, href], i) => (
+          <Link key={label} href={href} className={`group min-w-[6rem] ${i > 0 ? 'sm:border-l sm:border-line sm:pl-10' : ''}`}>
+            <div className="text-meta">{label}</div>
+            <div className={`metric mt-1.5 group-hover:opacity-80 transition ${tone ? TONE_CLASS[tone] : ''}`}>{value}</div>
+          </Link>
+        ))}
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 card space-y-4 min-w-0">
-          <div className="flex items-center justify-between">
-            <div className="card-heading">Needs attention</div>
-            {needsAttention > 0 && <Badge label={String(needsAttention)} tone="warn" />}
-          </div>
-          {needsAttention === 0 && (
-            <p className="text-secondary">Nothing waiting on you. Your workforce has no pending approvals or failures right now.</p>
-          )}
-          {pendingApprovals.map((a) => (
-            <div key={a.id} className="flex items-start justify-between gap-4 border-t border-line pt-3 first:border-0 first:pt-0">
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{a.task.title}</div>
-                <div className="text-secondary mt-0.5">{a.agent.name} · {a.actionType} · needs approval</div>
-              </div>
-              <Button href="/workforce/approvals" variant="secondary" className="text-xs shrink-0">Review</Button>
+      <div className="grid lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-8 min-w-0">
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-meta">Needs attention</div>
+              {needsAttention > 0 && <Badge label={String(needsAttention)} tone="warn" />}
             </div>
-          ))}
-          {failedTasks.map((t) => (
-            <div key={t.id} className="flex items-start justify-between gap-4 border-t border-line pt-3 first:border-0 first:pt-0">
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{t.title}</div>
-                <div className="text-secondary mt-0.5">{t.agent.name} · failed{t.failureReason ? ` · ${t.failureReason}` : ''}</div>
+            {needsAttention === 0 ? (
+              <p className="text-secondary border-t border-line pt-4">Nothing waiting on you. No pending approvals or failures right now.</p>
+            ) : (
+              <div className="divide-y divide-line border-t border-line">
+                {pendingApprovals.map((a) => (
+                  <div key={a.id} className="flex items-start justify-between gap-4 py-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{a.task.title}</div>
+                      <div className="text-secondary mt-0.5">{a.agent.name} · {a.actionType} · needs approval</div>
+                    </div>
+                    <Button href="/workforce/approvals" variant="secondary" className="text-xs shrink-0">Review</Button>
+                  </div>
+                ))}
+                {failedTasks.map((t) => (
+                  <div key={t.id} className="flex items-start justify-between gap-4 py-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{t.title}</div>
+                      <div className="text-secondary mt-0.5">{t.agent.name} · failed{t.failureReason ? ` · ${t.failureReason}` : ''}</div>
+                    </div>
+                    <Badge label="Failed" tone="bad" className="shrink-0" />
+                  </div>
+                ))}
               </div>
-              <Badge label="Failed" tone="bad" className="shrink-0" />
-            </div>
-          ))}
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <div className="text-meta">Recently finished</div>
+            {recentlyCompleted.length ? (
+              <div className="divide-y divide-line border-t border-line">
+                {recentlyCompleted.map((t) => (
+                  <div key={t.id} className="flex items-center justify-between gap-4 py-3">
+                    <div className="min-w-0 text-sm truncate">
+                      <span className="font-medium text-slate-100">{t.title}</span>
+                      <span className="text-muted"> · {t.agent.name}</span>
+                    </div>
+                    <div className="text-secondary shrink-0">{t.updatedAt.toLocaleDateString()}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-secondary border-t border-line pt-4">Nothing completed yet.</p>
+            )}
+          </section>
         </div>
 
         <div className="card space-y-4 min-w-0">
